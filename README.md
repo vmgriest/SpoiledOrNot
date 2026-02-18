@@ -1,10 +1,6 @@
 # SpoiledOrNot
 🍎 SpoiledOrNot - AI Food Freshness Detector
 
-https://img.shields.io/badge/python-3.8+-blue.svg
-https://img.shields.io/badge/TensorFlow-2.x-orange
-https://img.shields.io/badge/License-MIT-yellow.svg
-
 An AI-powered computer vision project that classifies food items as fresh or spoiled using deep learning. Built with transfer learning and state-of-the-art CNN architectures, this system can help reduce food waste and prevent foodborne illnesses by providing quick, automated freshness assessment.
 ✨ Features
 
