@@ -9,7 +9,6 @@ import argparse
 import os
 import sys
 from pathlib import Path
-
 import kagglehub
 import matplotlib.pyplot as plt
 import numpy as np
@@ -75,14 +74,17 @@ def find_image_folders(root: Path):
 # -----------------------------------------------------------------------------
 
 def get_train_transform(image_size=224):
-    """Training transform with augmentation to improve generalisation."""
     return transforms.Compose([
-        transforms.RandomResizedCrop(image_size, scale=(0.8, 1.0)),
+        transforms.RandomResizedCrop(image_size, scale=(0.6, 1.0)),
         transforms.RandomHorizontalFlip(),
-        transforms.RandomRotation(15),
-        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+        transforms.RandomVerticalFlip(),                          # ADD: handles upside-down
+        transforms.RandomRotation(180),                           # CHANGE: was 15°, now full rotation
+        transforms.ColorJitter(brightness=0.3, contrast=0.3,
+                               saturation=0.3, hue=0.1),          # INCREASE: more colour variety
+        transforms.RandomGrayscale(p=0.05),                       # ADD: robustness
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                             std=[0.229, 0.224, 0.225]),
     ])
 
 
@@ -429,7 +431,7 @@ def main():
     criterion = nn.CrossEntropyLoss()
     optimizer = build_optimizer(model, args.backbone)
 
-    num_epochs = 10
+    num_epochs = 8
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
     best_val_acc = -1.0
     checkpoint_path = Path("best_model.pt")
