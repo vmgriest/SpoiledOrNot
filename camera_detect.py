@@ -200,15 +200,18 @@ class LiveClassifier:
         self._running = False
         self._thread = None
 
+        # Updated TTA transform to match baseline.py's augmented transforms
         self.tta_transform = transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomVerticalFlip(),
-            transforms.RandomRotation(180),
-            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
+            transforms.RandomRotation(180),  # Match baseline's full rotation
+            transforms.ColorJitter(brightness=0.3, contrast=0.3, 
+                                 saturation=0.3, hue=0.1),  # Match baseline's increased jitter
+            transforms.RandomGrayscale(p=0.05),  # Added to match baseline
             transforms.Resize((224, 224)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                 std=[0.229, 0.224, 0.225]),
+                               std=[0.229, 0.224, 0.225]),
         ])
 
     def feed(self, full_frame: np.ndarray, crop: np.ndarray):
@@ -264,7 +267,7 @@ class LiveClassifier:
             # Original (clean) pass
             t = self.transform(pil).unsqueeze(0).to(self.device)
             all_probs.append(torch.softmax(self.model(t), dim=1))
-            # TTA passes
+            # TTA passes with augmented transforms
             for _ in range(self.tta_n - 1):
                 t = self.tta_transform(pil).unsqueeze(0).to(self.device)
                 all_probs.append(torch.softmax(self.model(t), dim=1))
@@ -284,6 +287,8 @@ def main():
     parser.add_argument("--height", type=int, default=480)
     parser.add_argument("--interval", type=float, default=CLASSIFY_INTERVAL,
                         help="Seconds between classifications (default: 1.0)")
+    parser.add_argument("--tta", type=int, default=5,
+                        help="Number of TTA augmentations (default: 5)")
     args = parser.parse_args()
 
     # ── Load model ──
@@ -296,10 +301,14 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Loading model from {model_path} on {device}...")
     try:
+        # Updated to handle the new checkpoint format from baseline.py
         model, ckpt = load_model_from_checkpoint(model_path, map_location=device)
         model = model.to(device)
         class_names = ckpt["class_names"]
+        arch = ckpt.get("arch", "unknown")
+        print(f"Model architecture: {arch}")
         print(f"Classes: {class_names}")
+        print(f"Best validation accuracy: {ckpt.get('val_accuracy', 'N/A')}")
     except Exception as e:
         print(f"Error loading model: {e}")
         sys.exit(1)
@@ -328,12 +337,14 @@ def main():
     print("  Hold a fruit inside the guide box.")
     print("  Results update automatically every second.")
     print("  SPACE = freeze frame | Q / ESC = quit")
+    print(f"  TTA (Test Time Augmentation): {args.tta} passes")
     print("=" * 50 + "\n")
 
     # ── Start background classifier ──
     classifier = LiveClassifier(
         model, transform, class_names, device,
-        fruit_detector=fruit_detector, interval=args.interval
+        fruit_detector=fruit_detector, interval=args.interval,
+        tta_n=args.tta  # Allow TTA count to be configurable
     )
     classifier.start()
 

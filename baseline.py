@@ -29,10 +29,63 @@ from torchvision import datasets, models, transforms
 # -----------------------------------------------------------------------------
 
 def get_data_path():
+    # First check if there's already a local data folder
+    local_data = Path("./data")
+    if local_data.exists():
+        # Check if it has image subfolders
+        subdirs = [d for d in local_data.iterdir() if d.is_dir() and not d.name.startswith(".")]
+        if subdirs and any(_has_images(d) for d in subdirs):
+            print(f"Using local data folder: {local_data}")
+            return local_data
+
     print("Downloading dataset (may use cache)...")
-    path = kagglehub.dataset_download("user2036/fruit-freshness-dataset-v1")
-    path = Path(path)
+
+    # Try multiple datasets (in order of preference)
+    datasets_to_try = [
+        "swoyam2609/fresh-and-stale-classification",
+        "user2036/fruit-freshness-dataset-v1",
+    ]
+
+    path = None
+    last_error = None
+    for dataset_id in datasets_to_try:
+        try:
+            print(f"  Trying dataset: {dataset_id}...")
+            path = kagglehub.dataset_download(dataset_id)
+            path = Path(path)
+            print(f"Successfully downloaded: {dataset_id}")
+            break
+        except Exception as e:
+            last_error = str(e)
+            print(f"  Failed: {dataset_id}")
+            continue
+
+    if path is None:
+        print("\n" + "=" * 60)
+        print("Could not download dataset automatically.")
+        print("=" * 60)
+        print("\nTo use this project, you need to:")
+        print("\nOption 1 - Manual Download (Recommended):")
+        print("  1. Go to: https://www.kaggle.com/datasets/swoyam2609/fresh-and-stale-classification")
+        print("  2. Click 'Download' button (top right)")
+        print("  3. Extract the zip to: ./data/ folder in this project")
+        print("  4. Run: python baseline.py")
+        print("\nOption 2 - Set up Kaggle API:")
+        print("  1. Get API token from kaggle.com/account")
+        print("  2. Place kaggle.json in: C:\\Users\\<yourname>\\.kaggle\\")
+        print("  3. Run: python baseline.py")
+        print("=" * 60)
+        print(f"\nError: {last_error[:100]}...")
+        sys.exit(1)
+
     print(f"Dataset root: {path}")
+    
+    # Check if there's a 'dataset' subfolder (common in this dataset)
+    dataset_subfolder = path / "dataset"
+    if dataset_subfolder.exists() and dataset_subfolder.is_dir():
+        print(f"Found 'dataset' subfolder, using that as root")
+        path = dataset_subfolder
+    
     # Common layouts: path/train/fresh, path/train/rotten OR path/fresh, path/rotten
     for sub in path.iterdir():
         if sub.is_dir() and not sub.name.startswith("."):
@@ -41,7 +94,6 @@ def get_data_path():
                 if sub2.is_dir():
                     print(f"    {sub2.name}/")
     return path
-
 
 def _has_images(folder: Path):
     exts = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
@@ -54,20 +106,28 @@ def _has_images(folder: Path):
 def find_image_folders(root: Path):
     """Find folder that has class subfolders (each with images)."""
     root = Path(root)
-    # Option A: root/train/fresh, root/train/rotten
-    for split in ("train", "Train", "training"):
+    # Option A: root/train/fresh, root/train/rotten (check both lowercase and capitalized)
+    for split in ("train", "Train", "training", "Train"):
         train_dir = root / split
         if train_dir.is_dir():
             subdirs = [d for d in train_dir.iterdir() if d.is_dir() and not d.name.startswith(".")]
             if subdirs and _has_images(subdirs[0]):
                 return train_dir, None
+    
+    # Also check for root/test or root/Test
+    for split in ("test", "Test"):
+        test_dir = root / split
+        if test_dir.is_dir():
+            subdirs = [d for d in test_dir.iterdir() if d.is_dir() and not d.name.startswith(".")]
+            if subdirs and _has_images(subdirs[0]):
+                return test_dir, None
+    
     # Option B: root/fresh, root/rotten (or root/Apple_Fresh, etc.)
     subdirs = [d for d in root.iterdir() if d.is_dir() and not d.name.startswith(".")]
     for d in subdirs:
         if _has_images(d):
             return root, None
     return None, "Could not find class subfolders with images"
-
 
 # -----------------------------------------------------------------------------
 # 2. DATA LOADERS
@@ -417,13 +477,26 @@ def main():
     train_loader, val_loader, class_names = build_dataloaders(data_dir, device=device)
     print(f"Classes: {class_names}")
 
-    # Official test set (dataset_root/test)
-    test_dir = data_dir.parent / "test"
-    test_loader, test_class_names = build_test_loader(test_dir)
-    if test_loader is not None:
-        print(f"Test set: {test_dir} ({len(test_loader.dataset)} images)")
-    else:
+    # Official test set - check multiple common locations
+    possible_test_dirs = [
+        data_path / "test",           # data/test
+        data_path / "Test",           # data/Test (capitalized)
+        data_dir / "test",            # data/train/test (unlikely but check)
+        data_dir / "Test",            # data/train/Test
+        data_dir.parent / "test",     # data/test when data_dir is data/train
+        data_dir.parent / "Test",     # data/Test when data_dir is data/train
+        ]
+
+    test_loader, test_class_names = None, None
+    for test_dir in possible_test_dirs:
+        test_loader, test_class_names = build_test_loader(test_dir)
+        if test_loader is not None:
+            print(f"Test set found: {test_dir} ({len(test_loader.dataset)} images)")
+            break
+
+    if test_loader is None:
         print("No official test set found; reporting validation metrics only.")
+        print("  (This dataset may not have a separate test folder - using validation split instead)")
 
     num_classes = len(class_names)
     pretrained = args.backbone == "resnet18" and not args.no_pretrained
