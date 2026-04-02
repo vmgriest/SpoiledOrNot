@@ -149,17 +149,18 @@ def draw_results(frame, class_name, confidence, class_names, all_probs,
             thickness=2, bg_color=(0, 0, 0), alpha=0.75
         )
 
-        # Probability bars for each class
-        y_off = h - 85
-        for cls, prob in zip(class_names, all_probs):
-            bar_len = int(prob * 160)
-            bar_color = (0, 210, 0) if "fresh" in cls.lower() else (0, 50, 210)
-            cv2.rectangle(frame, (10, y_off - 4), (10 + bar_len, y_off + 10), bar_color, -1)
-            frame = put_text_with_background(
-                frame, f"{cls}: {prob * 100:.1f}%", (178, y_off + 9),
-                scale=0.48, color=(255, 255, 255), bg_color=(0, 0, 0), alpha=0.5
-            )
-            y_off -= 24
+        # DEBUG: Uncomment to show probability bars for each class
+        # y_off = h - 85
+        # for cls, prob in zip(class_names, all_probs):
+        #     bar_len = int(prob * 160)
+        #     bar_color = (0, 210, 0) if "fresh" in cls.lower() else (0, 50, 210)
+        #     cv2.rectangle(frame, (10, y_off - 4), (10 + bar_len, y_off + 10), bar_color, -1)
+        #     frame = put_text_with_background(
+        #         frame, f"{cls}: {prob * 100:.1f}%", (178, y_off + 9),
+        #         scale=0.48, color=(255, 255, 255), bg_color=(0, 0, 0), alpha=0.5
+        #     )
+        #     y_off -= 24
+
     else:
         frame = put_text_with_background(
             frame, "Waiting for first result...", (10, h - 55),
@@ -283,6 +284,9 @@ def main():
     parser = argparse.ArgumentParser(description="Live fruit freshness detection")
     parser.add_argument("--model", default="best_model.pt", help="Path to model checkpoint")
     parser.add_argument("--camera", type=int, default=0, help="Camera device index")
+    parser.add_argument("--ip-camera", type=str, default=None, help="IP camera URL (e.g., http://10.0.0.2:4747/video)")
+    parser.add_argument("--rotate", type=int, default=0, choices=[0, 90, 180, 270],
+                        help="Rotate video feed (useful for phone cameras): 0, 90, 180, or 270 degrees")
     parser.add_argument("--width", type=int, default=640)
     parser.add_argument("--height", type=int, default=480)
     parser.add_argument("--interval", type=float, default=CLASSIFY_INTERVAL,
@@ -323,13 +327,27 @@ def main():
         fruit_detector = None
 
     # ── Open camera ──
-    cap = cv2.VideoCapture(args.camera)
-    if not cap.isOpened():
-        print(f"Failed to open camera {args.camera}")
-        sys.exit(1)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.width)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.height)
-    print(f"Camera: {int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))}x{int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))}")
+    if args.ip_camera:
+        # IP camera (e.g., DroidCam, IP Webcam app)
+        print(f"Connecting to IP camera: {args.ip_camera}")
+        cap = cv2.VideoCapture(args.ip_camera)
+        if not cap.isOpened():
+            print(f"Failed to connect to IP camera: {args.ip_camera}")
+            print("\nTroubleshooting:")
+            print("  - Make sure your phone and computer are on the same WiFi network")
+            print("  - Check the IP address in the DroidCam app on your phone")
+            print("  - Try opening the URL in a browser first to verify it works")
+            sys.exit(1)
+        print("IP camera connected successfully!")
+    else:
+        # Local webcam
+        cap = cv2.VideoCapture(args.camera)
+        if not cap.isOpened():
+            print(f"Failed to open camera {args.camera}")
+            sys.exit(1)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.height)
+        print(f"Camera: {int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))}x{int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))}")
 
     print("\n" + "=" * 50)
     print("SpoiledOrNot — Live Fruit Freshness Detector")
@@ -357,6 +375,18 @@ def main():
             print("Failed to read frame — retrying…")
             time.sleep(0.1)
             continue
+
+        # Rotate frame if needed (for phone cameras)
+        if args.rotate == 90:
+            frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+            # Resize to fit screen after rotation (swap back to landscape)
+            frame = cv2.resize(frame, (args.width, args.height))
+        elif args.rotate == 180:
+            frame = cv2.rotate(frame, cv2.ROTATE_180)
+        elif args.rotate == 270:
+            frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
+            # Resize to fit screen after rotation
+            frame = cv2.resize(frame, (args.width, args.height))
 
         h, w = frame.shape[:2]
         box_size = min(h, w) * 3 // 4
