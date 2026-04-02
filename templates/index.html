@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SpoiledOrNot - Fruit Freshness Detector</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #0d1f0d 0%, #1a0a0a 100%);
+            color: #fff;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 30px 0;
+            border-bottom: 2px solid rgba(255,255,255,0.08);
+            margin-bottom: 30px;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            background: linear-gradient(90deg, #2ecc71 0%, #f39c12 50%, #e74c3c 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+        }
+
+        header p {
+            color: #a0a0a0;
+            font-size: 1.1rem;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+
+        @media (max-width: 900px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.04);
+            border-radius: 16px;
+            padding: 25px;
+            border: 1px solid rgba(46, 204, 113, 0.15);
+            backdrop-filter: blur(10px);
+        }
+
+        .card h2 {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card h2 .icon {
+            font-size: 1.8rem;
+        }
+
+        /* Camera Section */
+        .camera-container {
+            position: relative;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            aspect-ratio: 4/3;
+        }
+
+        .camera-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .camera-container .placeholder {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #666;
+            gap: 15px;
+        }
+
+        .camera-container .placeholder .icon {
+            font-size: 4rem;
+            opacity: 0.5;
+        }
+
+        .camera-controls {
+            margin-top: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .input-group label {
+            font-size: 0.9rem;
+            color: #a0a0a0;
+            font-weight: 500;
+        }
+
+        .input-group input, .input-group select {
+            padding: 12px 15px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(0, 0, 0, 0.3);
+            color: #fff;
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+
+        .input-group input:focus, .input-group select:focus {
+            outline: none;
+            border-color: #2ecc71;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border-radius: 8px;
+            border: none;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #27ae60, #e74c3c);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(39, 174, 96, 0.35);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Apply button - more prominent when active */
+        .btn-apply {
+            background: rgba(46, 204, 113, 0.12);
+            color: #fff;
+            border: 1px solid rgba(46, 204, 113, 0.3);
+        }
+
+        .btn-apply:hover:not(:disabled) {
+            background: rgba(46, 204, 113, 0.22);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(46, 204, 113, 0.2);
+        }
+
+        .btn-apply.has-changes {
+            background: linear-gradient(135deg, #e67e22, #f39c12);
+            border-color: #f39c12;
+            animation: pulse-amber 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse-amber {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(243, 156, 18, 0.4); }
+            50% { box-shadow: 0 0 0 8px rgba(243, 156, 18, 0); }
+        }
+
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+            animation: none !important;
+        }
+
+        /* Settings changed indicator */
+        .settings-changed-hint {
+            font-size: 0.8rem;
+            color: #f39c12;
+            text-align: center;
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .settings-changed-hint.visible {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Result Display */
+        .result-display {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .result-display.fresh {
+            border-color: #2ecc71;
+            background: rgba(46, 204, 113, 0.1);
+        }
+
+        .result-display.spoiled {
+            border-color: #e74c3c;
+            background: rgba(231, 76, 60, 0.1);
+        }
+
+        .result-display.waiting {
+            border-color: rgba(255,255,255,0.15);
+        }
+
+        .result-display .status {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .result-display .confidence {
+            font-size: 2.5rem;
+            font-weight: 700;
+        }
+
+        .result-display.fresh .confidence {
+            color: #2ecc71;
+        }
+
+        .result-display.spoiled .confidence {
+            color: #e74c3c;
+        }
+
+        /* Training Section */
+        .training-status {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .status-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .status-row:last-child {
+            border-bottom: none;
+        }
+
+        .status-row .label {
+            color: #a0a0a0;
+        }
+
+        .status-row .value {
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+
+        .progress-bar .fill {
+            height: 100%;
+            background: linear-gradient(90deg, #2ecc71, #f39c12, #e74c3c);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+
+        .training-options {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        /* Alert messages */
+        .alert {
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .alert-success {
+            background: rgba(0, 200, 83, 0.15);
+            border: 1px solid #00c853;
+            color: #00c853;
+        }
+
+        .alert-error {
+            background: rgba(255, 23, 68, 0.15);
+            border: 1px solid #ff1744;
+            color: #ff1744;
+        }
+
+        .alert-info {
+            background: rgba(33, 150, 243, 0.15);
+            border: 1px solid #2196f3;
+            color: #2196f3;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 40px 0 20px;
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        /* Loading spinner */
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>SpoiledOrNot</h1>
+            <p>Real-time Fruit Freshness Detection with AI</p>
+        </header>
+
+        <div class="grid">
+            <!-- Camera Section -->
+            <div class="card">
+                <h2><span class="icon">📷</span> Live Camera</h2>
+
+                <div class="camera-container" id="cameraContainer">
+                    <div class="placeholder" id="cameraPlaceholder">
+                        <span class="icon">📹</span>
+                        <p>Camera is off</p>
+                    </div>
+                    <img id="cameraFeed" style="display: none;">
+                </div>
+
+                <div class="result-display waiting" id="resultDisplay">
+                    <div class="status">Waiting for camera...</div>
+                    <div class="confidence">--</div>
+                </div>
+
+                <div class="camera-controls">
+                    <div class="input-group">
+                        <label>Camera Source</label>
+                        <select id="cameraSource" onchange="onSettingChange()">
+                            <option value="webcam">Computer Webcam</option>
+                            <option value="droidcam">DroidCam (Phone)</option>
+                        </select>
+                    </div>
+
+                    <div class="input-group" id="droidcamUrl" style="display: none;">
+                        <label>DroidCam IP Address</label>
+                        <input type="text" id="ipCamera" placeholder="http://192.168.1.100:4747/video" value="http://10.0.0.2:4747/video" oninput="onSettingChange()">
+                    </div>
+
+                    <div class="input-group">
+                        <label>Rotation (if needed)</label>
+                        <select id="rotation" onchange="onSettingChange()">
+                            <option value="0">No rotation</option>
+                            <option value="90" selected>90° (phone portrait)</option>
+                            <option value="180">180° (upside down)</option>
+                            <option value="270">270° (phone portrait alt)</option>
+                        </select>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div class="input-group">
+                            <label>Width</label>
+                            <input type="number" id="frameWidth" value="480" min="320" max="1920" oninput="onSettingChange()">
+                        </div>
+                        <div class="input-group">
+                            <label>Height</label>
+                            <input type="number" id="frameHeight" value="780" min="240" max="1080" oninput="onSettingChange()">
+                        </div>
+                    </div>
+
+                    <!-- Settings changed hint -->
+                    <div class="settings-changed-hint" id="settingsHint">
+                        ⚠️ Settings changed — click Apply to update the stream
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <button class="btn btn-primary" id="toggleCamera" onclick="toggleCamera()">
+                            <span>▶️</span> Start Camera
+                        </button>
+                        <button class="btn btn-apply" id="applySettings" onclick="applySettings()" disabled>
+                            <span>🔄</span> Apply Settings
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Training Section -->
+            <div class="card">
+                <h2><span class="icon">🧠</span> Model Training</h2>
+
+                <div id="trainingAlert" class="alert alert-info" style="display: none;">
+                    <span>ℹ️</span> <span id="alertMessage"></span>
+                </div>
+
+                <div class="training-status" id="trainingStatus">
+                    <div class="status-row">
+                        <span class="label">Status</span>
+                        <span class="value" id="statusText">Not training</span>
+                    </div>
+                    <div class="status-row">
+                        <span class="label">Progress</span>
+                        <span class="value" id="progressText">-- / --</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="fill" id="progressBar" style="width: 0%"></div>
+                    </div>
+                    <div class="status-row" style="margin-top: 15px;">
+                        <span class="label">Best Accuracy</span>
+                        <span class="value" id="bestAccText">--</span>
+                    </div>
+                </div>
+
+                <div class="training-options">
+                    <div class="input-group">
+                        <label>Model Architecture</label>
+                        <select id="backbone">
+                            <option value="resnet18">ResNet-18 (Recommended)</option>
+                            <option value="small_cnn">Small CNN (Faster)</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label>Epochs</label>
+                        <select id="epochs">
+                            <option value="4">4 (Quick)</option>
+                            <option value="8" selected>8 (Balanced)</option>
+                            <option value="12">12 (Better accuracy)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" id="trainBtn" onclick="startTraining()" {% if not model_exists %}disabled{% endif %}>
+                    <span>🚀</span> Start Training
+                </button>
+
+                {% if not model_exists %}
+                <p style="margin-top: 15px; color: #a0a0a0; font-size: 0.9rem;">
+                    ⚠️ No trained model found. Please train a model first using the button above.
+                </p>
+                {% endif %}
+
+                <button class="btn btn-secondary" style="margin-top: 10px;" onclick="loadModel()">
+                    <span>🔄</span> Reload Model
+                </button>
+            </div>
+        </div>
+
+        <footer>
+            <p>SpoiledOrNot - Built with PyTorch & Flask</p>
+        </footer>
+    </div>
+
+    <script>
+        let cameraRunning = false;
+        let trainingPolling = null;
+        let resultPolling = null;
+        let settingsChanged = false;
+
+        // Track the settings that are currently active on the stream
+        let activeSettings = null;
+
+        // Camera source toggle
+        document.getElementById('cameraSource').addEventListener('change', function() {
+            const droidcamUrl = document.getElementById('droidcamUrl');
+            droidcamUrl.style.display = this.value === 'droidcam' ? 'block' : 'none';
+        });
+
+        // Called whenever any setting input changes
+        function onSettingChange() {
+            if (!cameraRunning) return;
+            settingsChanged = true;
+            const applyBtn = document.getElementById('applySettings');
+            const hint = document.getElementById('settingsHint');
+            applyBtn.classList.add('has-changes');
+            hint.classList.add('visible');
+        }
+
+        // Build stream URL from current settings
+        function buildStreamUrl() {
+            const source = document.getElementById('cameraSource').value;
+            const rotation = parseInt(document.getElementById('rotation').value) || 0;
+            const width = parseInt(document.getElementById('frameWidth').value) || 640;
+            const height = parseInt(document.getElementById('frameHeight').value) || 480;
+
+            let streamUrl = '/video_feed';
+            const params = [];
+
+            if (source === 'droidcam') {
+                const ip = document.getElementById('ipCamera').value.trim();
+                if (ip) {
+                    params.push('ip_camera=' + encodeURIComponent(ip));
+                }
+            } else {
+                params.push('camera=0');
+            }
+
+            // Pass target output dimensions and rotation to backend.
+            // The backend should: rotate first, then resize to (width x height).
+            // This means width/height are the FINAL displayed size regardless of rotation.
+            params.push('width=' + width);
+            params.push('height=' + height);
+            params.push('rotate=' + rotation);
+
+            // Cache buster forces browser to re-request the stream
+            params.push('_=' + Date.now());
+
+            const fullUrl = streamUrl + '?' + params.join('&');
+            console.log('[buildStreamUrl] URL:', fullUrl);
+            return fullUrl;
+        }
+
+        // Update container aspect ratio to match target output dimensions
+        function updateContainerAspectRatio() {
+            const width = parseInt(document.getElementById('frameWidth').value) || 640;
+            const height = parseInt(document.getElementById('frameHeight').value) || 480;
+            const container = document.getElementById('cameraContainer');
+            // width/height are already the post-rotation output dimensions the backend sends back
+            container.style.aspectRatio = width + '/' + height;
+            console.log('[updateContainerAspectRatio] Set to:', width + '/' + height);
+        }
+
+        // Toggle camera on/off
+        async function toggleCamera() {
+            const btn = document.getElementById('toggleCamera');
+            const feed = document.getElementById('cameraFeed');
+            const placeholder = document.getElementById('cameraPlaceholder');
+            const applyBtn = document.getElementById('applySettings');
+
+            if (cameraRunning) {
+                // Stop camera
+                cameraRunning = false;
+                feed.style.display = 'none';
+                placeholder.style.display = 'flex';
+                btn.innerHTML = '<span>▶️</span> Start Camera';
+                applyBtn.disabled = true;
+                applyBtn.classList.remove('has-changes');
+                document.getElementById('settingsHint').classList.remove('visible');
+                settingsChanged = false;
+                activeSettings = null;
+
+                if (resultPolling) {
+                    clearInterval(resultPolling);
+                    resultPolling = null;
+                }
+                updateResultDisplay({ class_name: null, confidence: 0, fruit_found: false });
+
+                // Reload page to stop stream
+                window.location.reload();
+            } else {
+                // Validate before starting
+                const source = document.getElementById('cameraSource').value;
+                if (source === 'droidcam') {
+                    const ip = document.getElementById('ipCamera').value.trim();
+                    if (!ip) {
+                        alert('Please enter the DroidCam IP address');
+                        return;
+                    }
+                }
+
+                btn.disabled = true;
+                btn.innerHTML = '<div class="spinner"></div> Connecting...';
+
+                updateContainerAspectRatio();
+
+                const streamUrl = buildStreamUrl();
+                feed.src = streamUrl;
+                feed.style.display = 'block';
+                placeholder.style.display = 'none';
+
+                // Save the settings that are now active on the stream
+                activeSettings = getCurrentSettings();
+
+                feed.onload = function() {
+                    btn.disabled = false;
+                    btn.innerHTML = '<span>⏹️</span> Stop Camera';
+                    cameraRunning = true;
+                    applyBtn.disabled = false;
+                    settingsChanged = false;
+                    startResultPolling();
+                };
+
+                feed.onerror = function() {
+                    alert('Failed to connect to camera. Please check the settings and try again.');
+                    btn.disabled = false;
+                    btn.innerHTML = '<span>▶️</span> Start Camera';
+                    feed.style.display = 'none';
+                    placeholder.style.display = 'flex';
+                };
+            }
+        }
+
+        // Capture current settings snapshot for comparison
+        function getCurrentSettings() {
+            return {
+                source: document.getElementById('cameraSource').value,
+                ip: document.getElementById('ipCamera').value.trim(),
+                rotation: document.getElementById('rotation').value,
+                width: document.getElementById('frameWidth').value,
+                height: document.getElementById('frameHeight').value,
+            };
+        }
+
+        // Apply settings to the running stream without full page reload
+        async function applySettings() {
+            if (!cameraRunning) return;
+
+            const source = document.getElementById('cameraSource').value;
+            if (source === 'droidcam') {
+                const ip = document.getElementById('ipCamera').value.trim();
+                if (!ip) {
+                    alert('Please enter the DroidCam IP address');
+                    return;
+                }
+            }
+
+            const btn = document.getElementById('applySettings');
+            const hint = document.getElementById('settingsHint');
+            btn.disabled = true;
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '<div class="spinner"></div> Applying...';
+
+            // Update the container aspect ratio first so the UI doesn't flash
+            updateContainerAspectRatio();
+
+            const feed = document.getElementById('cameraFeed');
+
+            // Clear src first to properly close the old MJPEG stream connection
+            feed.src = '';
+
+            // Small delay to let the browser release the old stream
+            await new Promise(resolve => setTimeout(resolve, 250));
+
+            const newUrl = buildStreamUrl();
+            console.log('[applySettings] Reconnecting to:', newUrl);
+            feed.src = newUrl;
+
+            let timeoutId;
+
+            const onSuccess = () => {
+                clearTimeout(timeoutId);
+                btn.disabled = false;
+                btn.innerHTML = '<span>✅</span> Applied!';
+                btn.classList.remove('has-changes');
+                hint.classList.remove('visible');
+                settingsChanged = false;
+                activeSettings = getCurrentSettings();
+
+                // Reset button label after a moment
+                setTimeout(() => {
+                    btn.innerHTML = '<span>🔄</span> Apply Settings';
+                }, 1500);
+            };
+
+            const onError = () => {
+                clearTimeout(timeoutId);
+                btn.disabled = false;
+                btn.innerHTML = originalHTML;
+                btn.classList.add('has-changes');
+                alert('Failed to apply settings. Please check your configuration.');
+            };
+
+            feed.onload = onSuccess;
+            feed.onerror = onError;
+
+            // Fallback timeout — MJPEG streams sometimes don't fire onload reliably
+            timeoutId = setTimeout(() => {
+                console.warn('[applySettings] onload timed out, assuming success');
+                onSuccess();
+            }, 8000);
+        }
+
+        // Poll for classification results
+        function startResultPolling() {
+            resultPolling = setInterval(async () => {
+                try {
+                    const response = await fetch('/api/result');
+                    const result = await response.json();
+                    updateResultDisplay(result);
+                } catch (e) {
+                    console.error('Failed to fetch result:', e);
+                }
+            }, 500);
+        }
+
+        // Update result display
+        function updateResultDisplay(result) {
+            const display = document.getElementById('resultDisplay');
+            const status = display.querySelector('.status');
+            const confidence = display.querySelector('.confidence');
+
+            display.className = 'result-display';
+
+            if (!result.fruit_found) {
+                display.classList.add('waiting');
+                status.textContent = 'No fruit detected';
+                confidence.textContent = '--';
+            } else if (result.class_name) {
+                const isFresh = result.class_name.toLowerCase().includes('fresh');
+                display.classList.add(isFresh ? 'fresh' : 'spoiled');
+                status.textContent = result.class_name;
+                confidence.textContent = (result.confidence * 100).toFixed(1) + '%';
+            } else {
+                display.classList.add('waiting');
+                status.textContent = 'Analyzing...';
+                confidence.textContent = '--';
+            }
+        }
+
+        // Start training
+        async function startTraining() {
+            const btn = document.getElementById('trainBtn');
+            const backbone = document.getElementById('backbone').value;
+            const epochs = parseInt(document.getElementById('epochs').value);
+
+            btn.disabled = true;
+            btn.innerHTML = '<div class="spinner"></div> Starting...';
+
+            try {
+                const response = await fetch('/api/start_training', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ backbone, epochs })
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert('Training started!', 'info');
+                    startTrainingPolling();
+                } else {
+                    showAlert(data.message, 'error');
+                    btn.disabled = false;
+                    btn.innerHTML = '<span>🚀</span> Start Training';
+                }
+            } catch (e) {
+                showAlert('Failed to start training: ' + e.message, 'error');
+                btn.disabled = false;
+                btn.innerHTML = '<span>🚀</span> Start Training';
+            }
+        }
+
+        // Poll training status
+        function startTrainingPolling() {
+            if (trainingPolling) clearInterval(trainingPolling);
+
+            trainingPolling = setInterval(async () => {
+                try {
+                    const response = await fetch('/api/training_status');
+                    const status = await response.json();
+                    updateTrainingUI(status);
+
+                    if (!status.is_training) {
+                        clearInterval(trainingPolling);
+                        document.getElementById('trainBtn').disabled = false;
+                        document.getElementById('trainBtn').innerHTML = '<span>🚀</span> Start Training';
+                    }
+                } catch (e) {
+                    console.error('Failed to fetch training status:', e);
+                }
+            }, 1000);
+        }
+
+        // Update training UI
+        function updateTrainingUI(status) {
+            document.getElementById('statusText').textContent = status.message;
+            document.getElementById('progressText').textContent =
+                status.total_epochs > 0 ? `${status.epoch} / ${status.total_epochs}` : '-- / --';
+
+            const progress = status.total_epochs > 0
+                ? (status.epoch / status.total_epochs) * 100
+                : 0;
+            document.getElementById('progressBar').style.width = progress + '%';
+
+            if (status.best_val_acc > 0) {
+                document.getElementById('bestAccText').textContent = (status.best_val_acc * 100).toFixed(2) + '%';
+            }
+        }
+
+        // Show alert
+        function showAlert(message, type) {
+            const alert = document.getElementById('trainingAlert');
+            const msg = document.getElementById('alertMessage');
+            alert.className = 'alert alert-' + type;
+            msg.textContent = message;
+            alert.style.display = 'flex';
+
+            setTimeout(() => {
+                alert.style.display = 'none';
+            }, 5000);
+        }
+
+        // Load model
+        async function loadModel() {
+            try {
+                const response = await fetch('/api/load_model', { method: 'POST' });
+                const data = await response.json();
+                showAlert(data.message, data.success ? 'success' : 'error');
+            } catch (e) {
+                showAlert('Failed to load model: ' + e.message, 'error');
+            }
+        }
+
+        // Initial training status check
+        fetch('/api/training_status').then(r => r.json()).then(updateTrainingUI);
+    </script>
+</body>
+</html>

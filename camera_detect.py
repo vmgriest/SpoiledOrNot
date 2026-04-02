@@ -25,7 +25,11 @@ from baseline import load_model_from_checkpoint, get_val_transform
 # ── Configuration ──────────────────────────────────────────────────────────────
 
 # Seconds between each classification (lower = more responsive, higher CPU use)
-CLASSIFY_INTERVAL = 1.0
+CLASSIFY_INTERVAL = 3.0  # was 1.0 — classify every 3 seconds to reduce CPU load
+
+# Cap the display loop at 15 FPS — prevents the camera loop from spinning at full speed
+TARGET_FPS = 15
+FRAME_INTERVAL = 1.0 / TARGET_FPS
 
 # COCO class IDs that count as "fruit/produce" in torchvision's Faster R-CNN
 # 52=banana, 53=apple, 55=orange, 57=carrot — covers common fruits
@@ -119,7 +123,7 @@ def draw_results(frame, class_name, confidence, class_names, all_probs,
             cv2.rectangle(frame, (bx1, by1), (bx2, by2), (0, 255, 180), 2)
 
     # Status badge top-left
-    mode_text = "❚❚ FROZEN — SPACE to resume" if frozen else "● LIVE"
+    mode_text = "|| FROZEN — SPACE to resume" if frozen else "● LIVE"
     mode_color = (0, 200, 255) if frozen else (0, 255, 100)
     frame = put_text_with_background(
         frame, mode_text, (10, 32), scale=0.65, color=mode_color,
@@ -148,7 +152,11 @@ def draw_results(frame, class_name, confidence, class_names, all_probs,
             frame, result_text, (10, h - 55), scale=1.05, color=pred_color,
             thickness=2, bg_color=(0, 0, 0), alpha=0.75
         )
-
+    else:
+        frame = put_text_with_background(
+            frame, "Waiting for first result...", (10, h - 55),
+            scale=0.7, color=(180, 180, 180), bg_color=(0, 0, 0), alpha=0.6
+        )
         # DEBUG: Uncomment to show probability bars for each class
         # y_off = h - 85
         # for cls, prob in zip(class_names, all_probs):
@@ -160,12 +168,6 @@ def draw_results(frame, class_name, confidence, class_names, all_probs,
         #         scale=0.48, color=(255, 255, 255), bg_color=(0, 0, 0), alpha=0.5
         #     )
         #     y_off -= 24
-
-    else:
-        frame = put_text_with_background(
-            frame, "Waiting for first result...", (10, h - 55),
-            scale=0.7, color=(180, 180, 180), bg_color=(0, 0, 0), alpha=0.6
-        )
 
     # Bottom instruction bar
     frame = put_text_with_background(
@@ -185,7 +187,7 @@ class LiveClassifier:
     """
 
     def __init__(self, model, transform, class_names, device,
-                 fruit_detector=None, interval=1.0, tta_n=5):
+                 fruit_detector=None, interval=CLASSIFY_INTERVAL, tta_n=1):
         self.model = model
         self.transform = transform
         self.class_names = class_names
@@ -201,18 +203,17 @@ class LiveClassifier:
         self._running = False
         self._thread = None
 
-        # Updated TTA transform to match baseline.py's augmented transforms
         self.tta_transform = transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.RandomVerticalFlip(),
-            transforms.RandomRotation(180),  # Match baseline's full rotation
-            transforms.ColorJitter(brightness=0.3, contrast=0.3, 
-                                 saturation=0.3, hue=0.1),  # Match baseline's increased jitter
-            transforms.RandomGrayscale(p=0.05),  # Added to match baseline
+            transforms.RandomRotation(180),
+            transforms.ColorJitter(brightness=0.3, contrast=0.3,
+                                   saturation=0.3, hue=0.1),
+            transforms.RandomGrayscale(p=0.05),
             transforms.Resize((224, 224)),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                               std=[0.229, 0.224, 0.225]),
+                                 std=[0.229, 0.224, 0.225]),
         ])
 
     def feed(self, full_frame: np.ndarray, crop: np.ndarray):
@@ -235,7 +236,14 @@ class LiveClassifier:
         self._running = False
 
     def _loop(self):
+        last_classify = 0
         while self._running:
+            now = time.time()
+            # Sleep cheaply until the interval has elapsed — no spinning
+            if now - last_classify < self.interval:
+                time.sleep(0.05)
+                continue
+
             with self._lock:
                 full_frame = self._latest_frame
                 crop = self._latest_crop
@@ -256,10 +264,13 @@ class LiveClassifier:
                 with self._lock:
                     self._result = (class_name, conf, probs, fruit_found, boxes)
 
-            time.sleep(self.interval)
+            last_classify = time.time()
 
     def _classify(self, bgr_crop):
-        rgb = cv2.cvtColor(bgr_crop, cv2.COLOR_BGR2RGB)
+        # Downscale crop before conversion — the transform resizes to 224 anyway,
+        # so working from 320px instead of full resolution saves time with no accuracy loss
+        small = cv2.resize(bgr_crop, (320, 320))
+        rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
         pil = Image.fromarray(rgb)
 
         self.model.eval()
@@ -268,7 +279,7 @@ class LiveClassifier:
             # Original (clean) pass
             t = self.transform(pil).unsqueeze(0).to(self.device)
             all_probs.append(torch.softmax(self.model(t), dim=1))
-            # TTA passes with augmented transforms
+            # TTA passes (default tta_n=1 skips these entirely)
             for _ in range(self.tta_n - 1):
                 t = self.tta_transform(pil).unsqueeze(0).to(self.device)
                 all_probs.append(torch.softmax(self.model(t), dim=1))
@@ -290,10 +301,14 @@ def main():
     parser.add_argument("--width", type=int, default=640)
     parser.add_argument("--height", type=int, default=480)
     parser.add_argument("--interval", type=float, default=CLASSIFY_INTERVAL,
-                        help="Seconds between classifications (default: 1.0)")
-    parser.add_argument("--tta", type=int, default=5,
-                        help="Number of TTA augmentations (default: 5)")
+                        help=f"Seconds between classifications (default: {CLASSIFY_INTERVAL})")
+    parser.add_argument("--tta", type=int, default=1,
+                        help="Number of TTA augmentation passes (default: 1 = disabled for performance)")
+    parser.add_argument("--fps", type=int, default=TARGET_FPS,
+                        help=f"Target display FPS (default: {TARGET_FPS})")
     args = parser.parse_args()
+
+    frame_interval = 1.0 / args.fps
 
     # ── Load model ──
     model_path = Path(args.model)
@@ -305,7 +320,6 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Loading model from {model_path} on {device}...")
     try:
-        # Updated to handle the new checkpoint format from baseline.py
         model, ckpt = load_model_from_checkpoint(model_path, map_location=device)
         model = model.to(device)
         class_names = ckpt["class_names"]
@@ -328,7 +342,6 @@ def main():
 
     # ── Open camera ──
     if args.ip_camera:
-        # IP camera (e.g., DroidCam, IP Webcam app)
         print(f"Connecting to IP camera: {args.ip_camera}")
         cap = cv2.VideoCapture(args.ip_camera)
         if not cap.isOpened():
@@ -340,7 +353,6 @@ def main():
             sys.exit(1)
         print("IP camera connected successfully!")
     else:
-        # Local webcam
         cap = cv2.VideoCapture(args.camera)
         if not cap.isOpened():
             print(f"Failed to open camera {args.camera}")
@@ -353,23 +365,32 @@ def main():
     print("SpoiledOrNot — Live Fruit Freshness Detector")
     print("=" * 50)
     print("  Hold a fruit inside the guide box.")
-    print("  Results update automatically every second.")
+    print(f"  Results update every {args.interval}s | Display: {args.fps} FPS | TTA passes: {args.tta}")
     print("  SPACE = freeze frame | Q / ESC = quit")
-    print(f"  TTA (Test Time Augmentation): {args.tta} passes")
     print("=" * 50 + "\n")
 
     # ── Start background classifier ──
     classifier = LiveClassifier(
         model, transform, class_names, device,
-        fruit_detector=fruit_detector, interval=args.interval,
-        tta_n=args.tta  # Allow TTA count to be configurable
+        fruit_detector=fruit_detector,
+        interval=args.interval,
+        tta_n=args.tta,
     )
     classifier.start()
 
     frozen = False
     frozen_frame = None
+    last_frame_time = 0
 
     while True:
+        # ── Throttle display loop to TARGET_FPS ──
+        now = time.time()
+        elapsed = now - last_frame_time
+        if elapsed < frame_interval:
+            time.sleep(frame_interval - elapsed)
+            continue
+        last_frame_time = time.time()
+
         ret, frame = cap.read()
         if not ret:
             print("Failed to read frame — retrying…")
@@ -379,13 +400,11 @@ def main():
         # Rotate frame if needed (for phone cameras)
         if args.rotate == 90:
             frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
-            # Resize to fit screen after rotation (swap back to landscape)
             frame = cv2.resize(frame, (args.width, args.height))
         elif args.rotate == 180:
             frame = cv2.rotate(frame, cv2.ROTATE_180)
         elif args.rotate == 270:
             frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
-            # Resize to fit screen after rotation
             frame = cv2.resize(frame, (args.width, args.height))
 
         h, w = frame.shape[:2]
@@ -394,14 +413,12 @@ def main():
         x2, y2 = x1 + box_size, y1 + box_size
 
         if not frozen:
-            # Feed the full frame to the detector and the centre crop to the classifier
             crop = frame[y1:y2, x1:x2]
             classifier.feed(frame, crop)
             display = frame.copy()
         else:
             display = frozen_frame.copy()
 
-        # Fetch latest result (may be None until first inference finishes)
         result = classifier.get_result()
         if result:
             class_name, confidence, all_probs, fruit_found, fruit_boxes = result
