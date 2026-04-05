@@ -9,6 +9,8 @@ import argparse
 import os
 import sys
 from pathlib import Path
+from typing import Optional, Tuple, Union
+
 import kagglehub
 import matplotlib.pyplot as plt
 import numpy as np
@@ -24,12 +26,14 @@ from sklearn.metrics import (
 from torch.utils.data import DataLoader, random_split
 from torchvision import datasets, models, transforms
 
+
 # -----------------------------------------------------------------------------
 # 1. DOWNLOAD DATASET & DISCOVER STRUCTURE
 # -----------------------------------------------------------------------------
 
-def get_data_path():
-    # First check if there's already a local data folder
+def get_data_path() -> Path:
+    """Get the path to the dataset, downloading if necessary."""
+    # First check if there is already a local data folder
     local_data = Path("./data")
     if local_data.exists():
         # Check if it has image subfolders
@@ -46,13 +50,13 @@ def get_data_path():
         "user2036/fruit-freshness-dataset-v1",
     ]
 
-    path = None
+    path: Optional[Path] = None
     last_error = None
     for dataset_id in datasets_to_try:
         try:
             print(f"  Trying dataset: {dataset_id}...")
-            path = kagglehub.dataset_download(dataset_id)
-            path = Path(path)
+            downloaded_path = kagglehub.dataset_download(dataset_id)
+            path = Path(downloaded_path)
             print(f"Successfully downloaded: {dataset_id}")
             break
         except Exception as e:
@@ -79,13 +83,13 @@ def get_data_path():
         sys.exit(1)
 
     print(f"Dataset root: {path}")
-    
-    # Check if there's a 'dataset' subfolder (common in this dataset)
+
+    # Check if there is a 'dataset' subfolder (common in this dataset)
     dataset_subfolder = path / "dataset"
     if dataset_subfolder.exists() and dataset_subfolder.is_dir():
-        print(f"Found 'dataset' subfolder, using that as root")
+        print("Found 'dataset' subfolder, using that as root")
         path = dataset_subfolder
-    
+
     # Common layouts: path/train/fresh, path/train/rotten OR path/fresh, path/rotten
     for sub in path.iterdir():
         if sub.is_dir() and not sub.name.startswith("."):
@@ -95,7 +99,9 @@ def get_data_path():
                     print(f"    {sub2.name}/")
     return path
 
-def _has_images(folder: Path):
+
+def _has_images(folder: Path) -> bool:
+    """Check if a folder contains any image files."""
     exts = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
     for f in folder.iterdir():
         if f.suffix.lower() in exts:
@@ -103,7 +109,7 @@ def _has_images(folder: Path):
     return False
 
 
-def find_image_folders(root: Path):
+def find_image_folders(root: Path) -> Tuple[Optional[Path], Optional[str]]:
     """Find folder that has class subfolders (each with images)."""
     root = Path(root)
     # Option A: root/train/fresh, root/train/rotten (check both lowercase and capitalized)
@@ -113,7 +119,7 @@ def find_image_folders(root: Path):
             subdirs = [d for d in train_dir.iterdir() if d.is_dir() and not d.name.startswith(".")]
             if subdirs and _has_images(subdirs[0]):
                 return train_dir, None
-    
+
     # Also check for root/test or root/Test
     for split in ("test", "Test"):
         test_dir = root / split
@@ -121,7 +127,7 @@ def find_image_folders(root: Path):
             subdirs = [d for d in test_dir.iterdir() if d.is_dir() and not d.name.startswith(".")]
             if subdirs and _has_images(subdirs[0]):
                 return test_dir, None
-    
+
     # Option B: root/fresh, root/rotten (or root/Apple_Fresh, etc.)
     subdirs = [d for d in root.iterdir() if d.is_dir() and not d.name.startswith(".")]
     for d in subdirs:
@@ -129,16 +135,18 @@ def find_image_folders(root: Path):
             return root, None
     return None, "Could not find class subfolders with images"
 
+
 # -----------------------------------------------------------------------------
 # 2. DATA LOADERS
 # -----------------------------------------------------------------------------
 
-def get_train_transform(image_size=224):
+def get_train_transform(image_size: int = 224) -> transforms.Compose:
+    """Get training data augmentation transforms."""
     return transforms.Compose([
         transforms.RandomResizedCrop(image_size, scale=(0.6, 1.0)),
         transforms.RandomHorizontalFlip(),
         transforms.RandomVerticalFlip(),                          # ADD: handles upside-down
-        transforms.RandomRotation(180),                           # CHANGE: was 15°, now full rotation
+        transforms.RandomRotation(180),                           # CHANGE: was 15 degrees, now full rotation
         transforms.ColorJitter(brightness=0.3, contrast=0.3,
                                saturation=0.3, hue=0.1),          # INCREASE: more colour variety
         transforms.RandomGrayscale(p=0.05),                       # ADD: robustness
@@ -148,7 +156,7 @@ def get_train_transform(image_size=224):
     ])
 
 
-def get_val_transform(image_size=224):
+def get_val_transform(image_size: int = 224) -> transforms.Compose:
     """Deterministic transform for validation and test (no augmentation)."""
     return transforms.Compose([
         transforms.Resize((image_size, image_size)),
@@ -160,39 +168,57 @@ def get_val_transform(image_size=224):
 class _TransformSubset(torch.utils.data.Dataset):
     """Wraps a Subset so we can apply a different transform than the parent dataset."""
 
-    def __init__(self, subset, transform):
+    def __init__(self, subset: torch.utils.data.Subset, transform: transforms.Compose):
         self.subset = subset
         self.transform = transform
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
         img, label = self.subset[idx]
         if self.transform:
             img = self.transform(img)
         return img, label
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.subset)
 
 
-def build_dataloaders(data_dir, batch_size=32, image_size=224, val_ratio=0.2, seed=42, device=None):
+def build_dataloaders(
+    data_dir: Union[str, Path],
+    batch_size: int = 32,
+    image_size: int = 224,
+    val_ratio: float = 0.2,
+    seed: int = 42,
+    device: Optional[torch.device] = None
+) -> Tuple[DataLoader, DataLoader, list]:
+    """Build training and validation dataloaders."""
     data_dir = Path(data_dir)
     full_ds = datasets.ImageFolder(str(data_dir), transform=None)
     n = len(full_ds)
     n_val = int(n * val_ratio)
     n_train = n - n_val
-    train_sub, val_sub = random_split(full_ds, [n_train, n_val], generator=torch.Generator().manual_seed(seed))
+    train_sub, val_sub = random_split(
+        full_ds, [n_train, n_val], generator=torch.Generator().manual_seed(seed)
+    )
 
     train_ds = _TransformSubset(train_sub, get_train_transform(image_size))
     val_ds = _TransformSubset(val_sub, get_val_transform(image_size))
 
     pin = device is not None and device.type == "cuda"
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=pin)
-    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=0)
+    train_loader = DataLoader(
+        train_ds, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=pin
+    )
+    val_loader = DataLoader(
+        val_ds, batch_size=batch_size, shuffle=False, num_workers=0
+    )
     return train_loader, val_loader, full_ds.classes
 
 
-def build_test_loader(test_dir, batch_size=32, image_size=224):
-    """Build a DataLoader for the official test set. test_dir should be dataset_root / 'test'."""
+def build_test_loader(
+    test_dir: Union[str, Path],
+    batch_size: int = 32,
+    image_size: int = 224
+) -> Tuple[Optional[DataLoader], Optional[list]]:
+    """Build a DataLoader for the official test set."""
     test_dir = Path(test_dir)
     if not test_dir.is_dir():
         return None, None
@@ -205,7 +231,9 @@ def build_test_loader(test_dir, batch_size=32, image_size=224):
 # -----------------------------------------------------------------------------
 
 class SmallCNN(nn.Module):
-    def __init__(self, num_classes):
+    """Small CNN model for fruit freshness classification."""
+
+    def __init__(self, num_classes: int):
         super().__init__()
         self.features = nn.Sequential(
             nn.Conv2d(3, 32, 3, padding=1),
@@ -226,7 +254,7 @@ class SmallCNN(nn.Module):
             nn.Linear(64, num_classes),
         )
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.features(x)
         return self.classifier(x)
 
@@ -241,7 +269,16 @@ def build_resnet18(num_classes: int, *, pretrained: bool = True) -> nn.Module:
 
 
 def build_model(backbone: str, num_classes: int, *, pretrained: bool = True) -> nn.Module:
-    """`backbone`: 'resnet18' | 'small_cnn'. `pretrained` applies only to ResNet."""
+    """Build a model with the specified backbone.
+
+    Args:
+        backbone: 'resnet18' or 'small_cnn'
+        num_classes: Number of output classes
+        pretrained: Whether to use pretrained weights (only for ResNet)
+
+    Returns:
+        The model instance
+    """
     b = backbone.lower().strip()
     if b == "small_cnn":
         return SmallCNN(num_classes)
@@ -250,8 +287,8 @@ def build_model(backbone: str, num_classes: int, *, pretrained: bool = True) -> 
     raise ValueError(f"Unknown backbone: {backbone!r}. Use 'resnet18' or 'small_cnn'.")
 
 
-def build_optimizer(model: nn.Module, backbone: str):
-    """Lower LR on pretrained ResNet trunk; higher on the classification head."""
+def build_optimizer(model: nn.Module, backbone: str) -> torch.optim.Optimizer:
+    """Build optimizer with lower LR on pretrained ResNet trunk; higher on the head."""
     b = backbone.lower().strip()
     if b == "small_cnn":
         return torch.optim.Adam(model.parameters(), lr=1e-3)
@@ -275,13 +312,20 @@ def build_optimizer(model: nn.Module, backbone: str):
 
 
 def load_model_from_checkpoint(
-    path: str | Path,
+    path: Union[str, Path],
     *,
-    map_location=None,
-) -> tuple[nn.Module, dict]:
-    """
-    Load `best_model.pt` and rebuild the correct architecture.
+    map_location: Optional[Union[str, torch.device]] = None,
+) -> Tuple[nn.Module, dict]:
+    """Load `best_model.pt` and rebuild the correct architecture.
+
     Checkpoints from older runs without `arch` default to `small_cnn`.
+
+    Args:
+        path: Path to the checkpoint file
+        map_location: Device to map the model to
+
+    Returns:
+        Tuple of (model, checkpoint_dict)
     """
     path = Path(path)
     ckpt = torch.load(path, map_location=map_location, weights_only=True)
@@ -298,7 +342,14 @@ def load_model_from_checkpoint(
 # 4. TRAINING
 # -----------------------------------------------------------------------------
 
-def train_epoch(model, loader, criterion, optimizer, device):
+def train_epoch(
+    model: nn.Module,
+    loader: DataLoader,
+    criterion: nn.Module,
+    optimizer: torch.optim.Optimizer,
+    device: torch.device
+) -> float:
+    """Train for one epoch and return average loss."""
     model.train()
     total_loss = 0.0
     for images, labels in loader:
@@ -316,7 +367,13 @@ def train_epoch(model, loader, criterion, optimizer, device):
 # 5. EVALUATION & METRICS (with explanations)
 # -----------------------------------------------------------------------------
 
-def evaluate(model, loader, device, class_names):
+def evaluate(
+    model: nn.Module,
+    loader: DataLoader,
+    device: torch.device,
+    class_names: list
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, list]:
+    """Evaluate model on a dataset."""
     model.eval()
     all_preds = []
     all_labels = []
@@ -336,7 +393,13 @@ def evaluate(model, loader, device, class_names):
     return y_true, y_pred, y_probs, class_names
 
 
-def print_metrics(y_true, y_pred, y_probs, class_names):
+def print_metrics(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    y_probs: np.ndarray,
+    class_names: list
+) -> Optional[dict]:
+    """Print detailed classification metrics with explanations."""
     n_classes = len(class_names)
 
     # ----- (1) ACCURACY -----
@@ -420,7 +483,8 @@ def print_metrics(y_true, y_pred, y_probs, class_names):
         return None
 
 
-def plot_roc(fpr, tpr, auc, save_path="roc_curve.png"):
+def plot_roc(fpr: np.ndarray, tpr: np.ndarray, auc: float, save_path: str = "roc_curve.png") -> None:
+    """Plot and save the ROC curve."""
     plt.figure(figsize=(6, 5))
     plt.plot(fpr, tpr, label=f"ROC (AUC = {auc:.3f})")
     plt.plot([0, 1], [0, 1], "k--", label="Random")
@@ -438,7 +502,8 @@ def plot_roc(fpr, tpr, auc, save_path="roc_curve.png"):
 # MAIN
 # -----------------------------------------------------------------------------
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
+    """Parse command line arguments."""
     p = argparse.ArgumentParser(description="Train fruit freshness classifier.")
     p.add_argument(
         "--backbone",
@@ -454,7 +519,8 @@ def parse_args():
     return p.parse_args()
 
 
-def main():
+def main() -> None:
+    """Main entry point for training."""
     args = parse_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
@@ -485,7 +551,7 @@ def main():
         data_dir / "Test",            # data/train/Test
         data_dir.parent / "test",     # data/test when data_dir is data/train
         data_dir.parent / "Test",     # data/Test when data_dir is data/train
-        ]
+    ]
 
     test_loader, test_class_names = None, None
     for test_dir in possible_test_dirs:
@@ -540,7 +606,7 @@ def main():
 
     # Validation set metrics (using best checkpoint)
     print("\n" + "=" * 60)
-    print("VALIDATION SET (20% holdout from train) — best checkpoint")
+    print("VALIDATION SET (20% holdout from train) - best checkpoint")
     print("=" * 60)
     y_true, y_pred, y_probs, _ = evaluate(model, val_loader, device, class_names)
     roc_data = print_metrics(y_true, y_pred, y_probs, class_names)
@@ -550,7 +616,7 @@ def main():
     # Official test set metrics (unbiased estimate, best checkpoint)
     if test_loader is not None:
         print("\n" + "=" * 60)
-        print("TEST SET (official held-out split) — best checkpoint")
+        print("TEST SET (official held-out split) - best checkpoint")
         print("=" * 60)
         y_true_t, y_pred_t, y_probs_t, _ = evaluate(model, test_loader, device, test_class_names)
         print_metrics(y_true_t, y_pred_t, y_probs_t, test_class_names)

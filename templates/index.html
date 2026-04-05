@@ -12,7 +12,7 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
             background: linear-gradient(135deg, #0d1f0d 0%, #1a0a0a 100%);
             color: #fff;
             min-height: 100vh;
@@ -521,81 +521,81 @@
         let activeSettings = null;
 
         // Camera source toggle
-        document.getElementById('cameraSource').addEventListener('change', function() {
-            const droidcamUrl = document.getElementById('droidcamUrl');
-            droidcamUrl.style.display = this.value === 'droidcam' ? 'block' : 'none';
+        document.getElementById("cameraSource").addEventListener("change", function() {
+            const droidcamUrl = document.getElementById("droidcamUrl");
+            droidcamUrl.style.display = this.value === "droidcam" ? "block" : "none";
         });
 
         // Called whenever any setting input changes
         function onSettingChange() {
             if (!cameraRunning) return;
             settingsChanged = true;
-            const applyBtn = document.getElementById('applySettings');
-            const hint = document.getElementById('settingsHint');
-            applyBtn.classList.add('has-changes');
-            hint.classList.add('visible');
+            const applyBtn = document.getElementById("applySettings");
+            const hint = document.getElementById("settingsHint");
+            applyBtn.classList.add("has-changes");
+            hint.classList.add("visible");
         }
 
         // Build stream URL from current settings
         function buildStreamUrl() {
-            const source = document.getElementById('cameraSource').value;
-            const rotation = parseInt(document.getElementById('rotation').value) || 0;
-            const width = parseInt(document.getElementById('frameWidth').value) || 640;
-            const height = parseInt(document.getElementById('frameHeight').value) || 480;
+            const source = document.getElementById("cameraSource").value;
+            const rotation = parseInt(document.getElementById("rotation").value) || 0;
+            const width = parseInt(document.getElementById("frameWidth").value) || 640;
+            const height = parseInt(document.getElementById("frameHeight").value) || 480;
 
-            let streamUrl = '/video_feed';
+            let streamUrl = "/video_feed";
             const params = [];
 
-            if (source === 'droidcam') {
-                const ip = document.getElementById('ipCamera').value.trim();
+            if (source === "droidcam") {
+                const ip = document.getElementById("ipCamera").value.trim();
                 if (ip) {
-                    params.push('ip_camera=' + encodeURIComponent(ip));
+                    params.push("ip_camera=" + encodeURIComponent(ip));
                 }
             } else {
-                params.push('camera=0');
+                params.push("camera=0");
             }
 
             // Pass target output dimensions and rotation to backend.
             // The backend should: rotate first, then resize to (width x height).
             // This means width/height are the FINAL displayed size regardless of rotation.
-            params.push('width=' + width);
-            params.push('height=' + height);
-            params.push('rotate=' + rotation);
+            params.push("width=" + width);
+            params.push("height=" + height);
+            params.push("rotate=" + rotation);
 
             // Cache buster forces browser to re-request the stream
-            params.push('_=' + Date.now());
+            params.push("_=" + Date.now());
 
-            const fullUrl = streamUrl + '?' + params.join('&');
-            console.log('[buildStreamUrl] URL:', fullUrl);
+            const fullUrl = streamUrl + "?" + params.join("&");
+            console.log("[buildStreamUrl] URL:", fullUrl);
             return fullUrl;
         }
 
         // Update container aspect ratio to match target output dimensions
         function updateContainerAspectRatio() {
-            const width = parseInt(document.getElementById('frameWidth').value) || 640;
-            const height = parseInt(document.getElementById('frameHeight').value) || 480;
-            const container = document.getElementById('cameraContainer');
+            const width = parseInt(document.getElementById("frameWidth").value) || 640;
+            const height = parseInt(document.getElementById("frameHeight").value) || 480;
+            const container = document.getElementById("cameraContainer");
             // width/height are already the post-rotation output dimensions the backend sends back
-            container.style.aspectRatio = width + '/' + height;
-            console.log('[updateContainerAspectRatio] Set to:', width + '/' + height);
+            container.style.aspectRatio = width + "/" + height;
+            console.log("[updateContainerAspectRatio] Set to:", width + "/" + height);
         }
 
         // Toggle camera on/off
         async function toggleCamera() {
-            const btn = document.getElementById('toggleCamera');
-            const feed = document.getElementById('cameraFeed');
-            const placeholder = document.getElementById('cameraPlaceholder');
-            const applyBtn = document.getElementById('applySettings');
+            const btn = document.getElementById("toggleCamera");
+            const feed = document.getElementById("cameraFeed");
+            const placeholder = document.getElementById("cameraPlaceholder");
+            const applyBtn = document.getElementById("applySettings");
 
             if (cameraRunning) {
                 // Stop camera
                 cameraRunning = false;
-                feed.style.display = 'none';
-                placeholder.style.display = 'flex';
-                btn.innerHTML = '<span>▶️</span> Start Camera';
+                feed.style.display = "none";
+                placeholder.style.display = "flex";
+                btn.innerHTML = "<span>▶️</span> Start Camera";
                 applyBtn.disabled = true;
-                applyBtn.classList.remove('has-changes');
-                document.getElementById('settingsHint').classList.remove('visible');
+                applyBtn.classList.remove("has-changes");
+                document.getElementById("settingsHint").classList.remove("visible");
                 settingsChanged = false;
                 activeSettings = null;
 
@@ -609,31 +609,31 @@
                 window.location.reload();
             } else {
                 // Validate before starting
-                const source = document.getElementById('cameraSource').value;
-                if (source === 'droidcam') {
-                    const ip = document.getElementById('ipCamera').value.trim();
+                const source = document.getElementById("cameraSource").value;
+                if (source === "droidcam") {
+                    const ip = document.getElementById("ipCamera").value.trim();
                     if (!ip) {
-                        alert('Please enter the DroidCam IP address');
+                        alert("Please enter the DroidCam IP address");
                         return;
                     }
                 }
 
                 btn.disabled = true;
-                btn.innerHTML = '<div class="spinner"></div> Connecting...';
+                btn.innerHTML = "<div class="spinner"></div> Connecting...";
 
                 updateContainerAspectRatio();
 
                 const streamUrl = buildStreamUrl();
                 feed.src = streamUrl;
-                feed.style.display = 'block';
-                placeholder.style.display = 'none';
+                feed.style.display = "block";
+                placeholder.style.display = "none";
 
                 // Save the settings that are now active on the stream
                 activeSettings = getCurrentSettings();
 
                 feed.onload = function() {
                     btn.disabled = false;
-                    btn.innerHTML = '<span>⏹️</span> Stop Camera';
+                    btn.innerHTML = "<span>⏹️</span> Stop Camera";
                     cameraRunning = true;
                     applyBtn.disabled = false;
                     settingsChanged = false;
@@ -641,11 +641,11 @@
                 };
 
                 feed.onerror = function() {
-                    alert('Failed to connect to camera. Please check the settings and try again.');
+                    alert("Failed to connect to camera. Please check the settings and try again.");
                     btn.disabled = false;
-                    btn.innerHTML = '<span>▶️</span> Start Camera';
-                    feed.style.display = 'none';
-                    placeholder.style.display = 'flex';
+                    btn.innerHTML = "<span>▶️</span> Start Camera";
+                    feed.style.display = "none";
+                    placeholder.style.display = "flex";
                 };
             }
         }
@@ -653,11 +653,11 @@
         // Capture current settings snapshot for comparison
         function getCurrentSettings() {
             return {
-                source: document.getElementById('cameraSource').value,
-                ip: document.getElementById('ipCamera').value.trim(),
-                rotation: document.getElementById('rotation').value,
-                width: document.getElementById('frameWidth').value,
-                height: document.getElementById('frameHeight').value,
+                source: document.getElementById("cameraSource").value,
+                ip: document.getElementById("ipCamera").value.trim(),
+                rotation: document.getElementById("rotation").value,
+                width: document.getElementById("frameWidth").value,
+                height: document.getElementById("frameHeight").value,
             };
         }
 
@@ -665,34 +665,34 @@
         async function applySettings() {
             if (!cameraRunning) return;
 
-            const source = document.getElementById('cameraSource').value;
-            if (source === 'droidcam') {
-                const ip = document.getElementById('ipCamera').value.trim();
+            const source = document.getElementById("cameraSource").value;
+            if (source === "droidcam") {
+                const ip = document.getElementById("ipCamera").value.trim();
                 if (!ip) {
-                    alert('Please enter the DroidCam IP address');
+                    alert("Please enter the DroidCam IP address");
                     return;
                 }
             }
 
-            const btn = document.getElementById('applySettings');
-            const hint = document.getElementById('settingsHint');
+            const btn = document.getElementById("applySettings");
+            const hint = document.getElementById("settingsHint");
             btn.disabled = true;
             const originalHTML = btn.innerHTML;
-            btn.innerHTML = '<div class="spinner"></div> Applying...';
+            btn.innerHTML = "<div class="spinner"></div> Applying...";
 
-            // Update the container aspect ratio first so the UI doesn't flash
+            // Update the container aspect ratio first so the UI doesn"t flash
             updateContainerAspectRatio();
 
-            const feed = document.getElementById('cameraFeed');
+            const feed = document.getElementById("cameraFeed");
 
             // Clear src first to properly close the old MJPEG stream connection
-            feed.src = '';
+            feed.src = "";
 
             // Small delay to let the browser release the old stream
             await new Promise(resolve => setTimeout(resolve, 250));
 
             const newUrl = buildStreamUrl();
-            console.log('[applySettings] Reconnecting to:', newUrl);
+            console.log("[applySettings] Reconnecting to:", newUrl);
             feed.src = newUrl;
 
             let timeoutId;
@@ -700,15 +700,15 @@
             const onSuccess = () => {
                 clearTimeout(timeoutId);
                 btn.disabled = false;
-                btn.innerHTML = '<span>✅</span> Applied!';
-                btn.classList.remove('has-changes');
-                hint.classList.remove('visible');
+                btn.innerHTML = "<span>✅</span> Applied!";
+                btn.classList.remove("has-changes");
+                hint.classList.remove("visible");
                 settingsChanged = false;
                 activeSettings = getCurrentSettings();
 
                 // Reset button label after a moment
                 setTimeout(() => {
-                    btn.innerHTML = '<span>🔄</span> Apply Settings';
+                    btn.innerHTML = "<span>🔄</span> Apply Settings";
                 }, 1500);
             };
 
@@ -716,16 +716,16 @@
                 clearTimeout(timeoutId);
                 btn.disabled = false;
                 btn.innerHTML = originalHTML;
-                btn.classList.add('has-changes');
-                alert('Failed to apply settings. Please check your configuration.');
+                btn.classList.add("has-changes");
+                alert("Failed to apply settings. Please check your configuration.");
             };
 
             feed.onload = onSuccess;
             feed.onerror = onError;
 
-            // Fallback timeout — MJPEG streams sometimes don't fire onload reliably
+            // Fallback timeout — MJPEG streams sometimes don"t fire onload reliably
             timeoutId = setTimeout(() => {
-                console.warn('[applySettings] onload timed out, assuming success');
+                console.warn("[applySettings] onload timed out, assuming success");
                 onSuccess();
             }, 8000);
         }
@@ -734,68 +734,68 @@
         function startResultPolling() {
             resultPolling = setInterval(async () => {
                 try {
-                    const response = await fetch('/api/result');
+                    const response = await fetch("/api/result");
                     const result = await response.json();
                     updateResultDisplay(result);
                 } catch (e) {
-                    console.error('Failed to fetch result:', e);
+                    console.error("Failed to fetch result:", e);
                 }
             }, 500);
         }
 
         // Update result display
         function updateResultDisplay(result) {
-            const display = document.getElementById('resultDisplay');
-            const status = display.querySelector('.status');
-            const confidence = display.querySelector('.confidence');
+            const display = document.getElementById("resultDisplay");
+            const status = display.querySelector(".status");
+            const confidence = display.querySelector(".confidence");
 
-            display.className = 'result-display';
+            display.className = "result-display";
 
             if (!result.fruit_found) {
-                display.classList.add('waiting');
-                status.textContent = 'No fruit detected';
-                confidence.textContent = '--';
+                display.classList.add("waiting");
+                status.textContent = "No fruit detected";
+                confidence.textContent = "--";
             } else if (result.class_name) {
-                const isFresh = result.class_name.toLowerCase().includes('fresh');
-                display.classList.add(isFresh ? 'fresh' : 'spoiled');
+                const isFresh = result.class_name.toLowerCase().includes("fresh");
+                display.classList.add(isFresh ? "fresh" : "spoiled");
                 status.textContent = result.class_name;
-                confidence.textContent = (result.confidence * 100).toFixed(1) + '%';
+                confidence.textContent = (result.confidence * 100).toFixed(1) + "%";
             } else {
-                display.classList.add('waiting');
-                status.textContent = 'Analyzing...';
-                confidence.textContent = '--';
+                display.classList.add("waiting");
+                status.textContent = "Analyzing...";
+                confidence.textContent = "--";
             }
         }
 
         // Start training
         async function startTraining() {
-            const btn = document.getElementById('trainBtn');
-            const backbone = document.getElementById('backbone').value;
-            const epochs = parseInt(document.getElementById('epochs').value);
+            const btn = document.getElementById("trainBtn");
+            const backbone = document.getElementById("backbone").value;
+            const epochs = parseInt(document.getElementById("epochs").value);
 
             btn.disabled = true;
-            btn.innerHTML = '<div class="spinner"></div> Starting...';
+            btn.innerHTML = "<div class="spinner"></div> Starting...";
 
             try {
-                const response = await fetch('/api/start_training', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                const response = await fetch("/api/start_training", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ backbone, epochs })
                 });
                 const data = await response.json();
 
                 if (data.success) {
-                    showAlert('Training started!', 'info');
+                    showAlert("Training started!", "info");
                     startTrainingPolling();
                 } else {
-                    showAlert(data.message, 'error');
+                    showAlert(data.message, "error");
                     btn.disabled = false;
-                    btn.innerHTML = '<span>🚀</span> Start Training';
+                    btn.innerHTML = "<span>🚀</span> Start Training";
                 }
             } catch (e) {
-                showAlert('Failed to start training: ' + e.message, 'error');
+                showAlert("Failed to start training: " + e.message, "error");
                 btn.disabled = false;
-                btn.innerHTML = '<span>🚀</span> Start Training';
+                btn.innerHTML = "<span>🚀</span> Start Training";
             }
         }
 
@@ -805,63 +805,63 @@
 
             trainingPolling = setInterval(async () => {
                 try {
-                    const response = await fetch('/api/training_status');
+                    const response = await fetch("/api/training_status");
                     const status = await response.json();
                     updateTrainingUI(status);
 
                     if (!status.is_training) {
                         clearInterval(trainingPolling);
-                        document.getElementById('trainBtn').disabled = false;
-                        document.getElementById('trainBtn').innerHTML = '<span>🚀</span> Start Training';
+                        document.getElementById("trainBtn").disabled = false;
+                        document.getElementById("trainBtn").innerHTML = "<span>🚀</span> Start Training";
                     }
                 } catch (e) {
-                    console.error('Failed to fetch training status:', e);
+                    console.error("Failed to fetch training status:", e);
                 }
             }, 1000);
         }
 
         // Update training UI
         function updateTrainingUI(status) {
-            document.getElementById('statusText').textContent = status.message;
-            document.getElementById('progressText').textContent =
-                status.total_epochs > 0 ? `${status.epoch} / ${status.total_epochs}` : '-- / --';
+            document.getElementById("statusText").textContent = status.message;
+            document.getElementById("progressText").textContent =
+                status.total_epochs > 0 ? `${status.epoch} / ${status.total_epochs}` : "-- / --";
 
             const progress = status.total_epochs > 0
                 ? (status.epoch / status.total_epochs) * 100
                 : 0;
-            document.getElementById('progressBar').style.width = progress + '%';
+            document.getElementById("progressBar").style.width = progress + "%";
 
             if (status.best_val_acc > 0) {
-                document.getElementById('bestAccText').textContent = (status.best_val_acc * 100).toFixed(2) + '%';
+                document.getElementById("bestAccText").textContent = (status.best_val_acc * 100).toFixed(2) + "%";
             }
         }
 
         // Show alert
         function showAlert(message, type) {
-            const alert = document.getElementById('trainingAlert');
-            const msg = document.getElementById('alertMessage');
-            alert.className = 'alert alert-' + type;
+            const alert = document.getElementById("trainingAlert");
+            const msg = document.getElementById("alertMessage");
+            alert.className = "alert alert-" + type;
             msg.textContent = message;
-            alert.style.display = 'flex';
+            alert.style.display = "flex";
 
             setTimeout(() => {
-                alert.style.display = 'none';
+                alert.style.display = "none";
             }, 5000);
         }
 
         // Load model
         async function loadModel() {
             try {
-                const response = await fetch('/api/load_model', { method: 'POST' });
+                const response = await fetch("/api/load_model", { method: "POST" });
                 const data = await response.json();
-                showAlert(data.message, data.success ? 'success' : 'error');
+                showAlert(data.message, data.success ? "success" : "error");
             } catch (e) {
-                showAlert('Failed to load model: ' + e.message, 'error');
+                showAlert("Failed to load model: " + e.message, "error");
             }
         }
 
         // Initial training status check
-        fetch('/api/training_status').then(r => r.json()).then(updateTrainingUI);
+        fetch("/api/training_status").then(r => r.json()).then(updateTrainingUI);
     </script>
 </body>
 </html>

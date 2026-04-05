@@ -1,6 +1,6 @@
 """
 Real-time fruit freshness detection using laptop camera.
-Classifies continuously on the live feed — no need to press SPACE.
+Classifies continuously on the live feed - no need to press SPACE.
 Press SPACE to freeze/unfreeze, ESC or 'q' to quit.
 
 Run: python camera_detect.py
@@ -12,46 +12,51 @@ import sys
 import threading
 import time
 from pathlib import Path
+from typing import Any, List, Optional, Tuple
 
 import cv2
 import numpy as np
 import torch
-from torchvision import transforms
 from PIL import Image
+from torchvision import transforms
 
-from baseline import load_model_from_checkpoint, get_val_transform
+from baseline import get_val_transform, load_model_from_checkpoint
 
 
-# ── Configuration ──────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
+# CONFIGURATION
+# ------------------------------------------------------------------------------
 
 # Seconds between each classification (lower = more responsive, higher CPU use)
-CLASSIFY_INTERVAL = 3.0  # was 1.0 — classify every 3 seconds to reduce CPU load
+CLASSIFY_INTERVAL = 3.0  # was 1.0 - classify every 3 seconds to reduce CPU load
 
-# Cap the display loop at 15 FPS — prevents the camera loop from spinning at full speed
+# Cap the display loop at 15 FPS - prevents the camera loop from spinning at full speed
 TARGET_FPS = 15
 FRAME_INTERVAL = 1.0 / TARGET_FPS
 
 # COCO class IDs that count as "fruit/produce" in torchvision's Faster R-CNN
-# 52=banana, 53=apple, 55=orange, 57=carrot — covers common fruits
+# 52=banana, 53=apple, 55=orange, 57=carrot - covers common fruits
 FRUIT_COCO_IDS = {52, 53, 55, 57}
 FRUIT_DETECT_THRESHOLD = 0.5   # min detector confidence to count as fruit
 
 
-# ── Fruit detector (Faster R-CNN, COCO) ───────────────────────────────────────
+# ------------------------------------------------------------------------------
+# FRUIT DETECTOR (FASTER R-CNN, COCO)
+# ------------------------------------------------------------------------------
 
 class FruitDetector:
     """
     Lightweight wrapper around torchvision's Faster R-CNN (MobileNet backbone).
     Only flags detections whose COCO class is in FRUIT_COCO_IDS.
-    No internet download needed after the first run — weights are cached locally.
+    No internet download needed after the first run - weights are cached locally.
     """
 
-    def __init__(self, device, threshold=FRUIT_DETECT_THRESHOLD):
+    def __init__(self, device: torch.device, threshold: float = FRUIT_DETECT_THRESHOLD):
         from torchvision.models.detection import (
-            fasterrcnn_mobilenet_v3_large_320_fpn,
             FasterRCNN_MobileNet_V3_Large_320_FPN_Weights,
+            fasterrcnn_mobilenet_v3_large_320_fpn,
         )
-        print("Loading fruit detector (Faster R-CNN MobileNet)…")
+        print("Loading fruit detector (Faster R-CNN MobileNet)...")
         weights = FasterRCNN_MobileNet_V3_Large_320_FPN_Weights.DEFAULT
         self._model = fasterrcnn_mobilenet_v3_large_320_fpn(weights=weights)
         self._model.eval().to(device)
@@ -61,7 +66,7 @@ class FruitDetector:
         print("Fruit detector ready.")
 
     @torch.no_grad()
-    def contains_fruit(self, bgr_frame: np.ndarray) -> tuple[bool, list]:
+    def contains_fruit(self, bgr_frame: np.ndarray) -> Tuple[bool, list]:
         """
         Returns (fruit_found: bool, boxes: list of (x1,y1,x2,y2) for found fruits).
         Runs on the full frame so nothing is accidentally cropped out.
@@ -79,11 +84,22 @@ class FruitDetector:
         return len(boxes) > 0, boxes
 
 
-# ── Text / drawing helpers ─────────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
+# TEXT / DRAWING HELPERS
+# ------------------------------------------------------------------------------
 
-def put_text_with_background(frame, text, position, font=cv2.FONT_HERSHEY_SIMPLEX,
-                              scale=0.8, color=(255, 255, 255), thickness=2,
-                              bg_color=(0, 0, 0), alpha=0.6):
+def put_text_with_background(
+    frame: np.ndarray,
+    text: str,
+    position: Tuple[int, int],
+    font: int = cv2.FONT_HERSHEY_SIMPLEX,
+    scale: float = 0.8,
+    color: Tuple[int, int, int] = (255, 255, 255),
+    thickness: int = 2,
+    bg_color: Tuple[int, int, int] = (0, 0, 0),
+    alpha: float = 0.6
+) -> np.ndarray:
+    """Draw text with a semi-transparent background."""
     (text_w, text_h), _ = cv2.getTextSize(text, font, scale, thickness)
     x, y = position
     overlay = frame.copy()
@@ -93,12 +109,20 @@ def put_text_with_background(frame, text, position, font=cv2.FONT_HERSHEY_SIMPLE
     return frame
 
 
-def draw_results(frame, class_name, confidence, class_names, all_probs,
-                 frozen=False, fruit_found=True, fruit_boxes=None):
+def draw_results(
+    frame: np.ndarray,
+    class_name: Optional[str],
+    confidence: float,
+    class_names: list,
+    all_probs: List[float],
+    frozen: bool = False,
+    fruit_found: bool = True,
+    fruit_boxes: Optional[List[List[int]]] = None
+) -> np.ndarray:
     """Overlay live prediction results onto the frame."""
     h, w = frame.shape[:2]
 
-    # Coloured border — green = fresh, red = spoiled, orange = frozen, grey = no fruit
+    # Coloured border - green = fresh, red = spoiled, orange = frozen, grey = no fruit
     if frozen:
         border_color = (255, 180, 0)
         border_thickness = 6
@@ -116,14 +140,14 @@ def draw_results(frame, class_name, confidence, class_names, all_probs,
         border_thickness = 2
     cv2.rectangle(frame, (0, 0), (w - 1, h - 1), border_color, border_thickness)
 
-    # Draw detected fruit bounding boxes — coordinates are full-frame since
+    # Draw detected fruit bounding boxes - coordinates are full-frame since
     # detection now runs on the full frame, not the crop
     if fruit_boxes and not frozen:
         for (bx1, by1, bx2, by2) in fruit_boxes:
             cv2.rectangle(frame, (bx1, by1), (bx2, by2), (0, 255, 180), 2)
 
     # Status badge top-left
-    mode_text = "|| FROZEN — SPACE to resume" if frozen else "● LIVE"
+    mode_text = "|| FROZEN - SPACE to resume" if frozen else "LIVE"
     mode_color = (0, 200, 255) if frozen else (0, 255, 100)
     frame = put_text_with_background(
         frame, mode_text, (10, 32), scale=0.65, color=mode_color,
@@ -157,17 +181,6 @@ def draw_results(frame, class_name, confidence, class_names, all_probs,
             frame, "Waiting for first result...", (10, h - 55),
             scale=0.7, color=(180, 180, 180), bg_color=(0, 0, 0), alpha=0.6
         )
-        # DEBUG: Uncomment to show probability bars for each class
-        # y_off = h - 85
-        # for cls, prob in zip(class_names, all_probs):
-        #     bar_len = int(prob * 160)
-        #     bar_color = (0, 210, 0) if "fresh" in cls.lower() else (0, 50, 210)
-        #     cv2.rectangle(frame, (10, y_off - 4), (10 + bar_len, y_off + 10), bar_color, -1)
-        #     frame = put_text_with_background(
-        #         frame, f"{cls}: {prob * 100:.1f}%", (178, y_off + 9),
-        #         scale=0.48, color=(255, 255, 255), bg_color=(0, 0, 0), alpha=0.5
-        #     )
-        #     y_off -= 24
 
     # Bottom instruction bar
     frame = put_text_with_background(
@@ -178,7 +191,9 @@ def draw_results(frame, class_name, confidence, class_names, all_probs,
     return frame
 
 
-# ── Background inference thread ────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
+# BACKGROUND INFERENCE THREAD
+# ------------------------------------------------------------------------------
 
 class LiveClassifier:
     """
@@ -186,8 +201,16 @@ class LiveClassifier:
     always stays smooth regardless of classification speed.
     """
 
-    def __init__(self, model, transform, class_names, device,
-                 fruit_detector=None, interval=CLASSIFY_INTERVAL, tta_n=1):
+    def __init__(
+        self,
+        model: torch.nn.Module,
+        transform: transforms.Compose,
+        class_names: list,
+        device: torch.device,
+        fruit_detector: Optional[FruitDetector] = None,
+        interval: float = CLASSIFY_INTERVAL,
+        tta_n: int = 1
+    ):
         self.model = model
         self.transform = transform
         self.class_names = class_names
@@ -197,11 +220,11 @@ class LiveClassifier:
         self.tta_n = tta_n
 
         self._lock = threading.Lock()
-        self._latest_frame = None         # full frame — used for fruit detection
-        self._latest_crop = None          # centre crop — used for freshness classification
-        self._result = None               # (class_name, confidence, probs, fruit_found, boxes)
+        self._latest_frame: Optional[np.ndarray] = None         # full frame - used for fruit detection
+        self._latest_crop: Optional[np.ndarray] = None          # centre crop - used for freshness classification
+        self._result: Optional[Tuple] = None                    # (class_name, confidence, probs, fruit_found, boxes)
         self._running = False
-        self._thread = None
+        self._thread: Optional[threading.Thread] = None
 
         self.tta_transform = transforms.Compose([
             transforms.RandomHorizontalFlip(),
@@ -216,30 +239,33 @@ class LiveClassifier:
                                  std=[0.229, 0.224, 0.225]),
         ])
 
-    def feed(self, full_frame: np.ndarray, crop: np.ndarray):
+    def feed(self, full_frame: np.ndarray, crop: np.ndarray) -> None:
         """Camera loop hands off the full frame (for detection) and centre crop (for classification)."""
         with self._lock:
             self._latest_frame = full_frame.copy()
             self._latest_crop = crop.copy()
 
-    def get_result(self):
+    def get_result(self) -> Optional[Tuple]:
         """Returns (class_name, confidence, probs, fruit_found, boxes) or None if not ready yet."""
         with self._lock:
             return self._result
 
-    def start(self):
+    def start(self) -> None:
+        """Start the background classification thread."""
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
 
-    def stop(self):
+    def stop(self) -> None:
+        """Stop the background classification thread."""
         self._running = False
 
-    def _loop(self):
+    def _loop(self) -> None:
+        """Main classification loop running in background thread."""
         last_classify = 0
         while self._running:
             now = time.time()
-            # Sleep cheaply until the interval has elapsed — no spinning
+            # Sleep cheaply until the interval has elapsed - no spinning
             if now - last_classify < self.interval:
                 time.sleep(0.05)
                 continue
@@ -266,8 +292,9 @@ class LiveClassifier:
 
             last_classify = time.time()
 
-    def _classify(self, bgr_crop):
-        # Downscale crop before conversion — the transform resizes to 224 anyway,
+    def _classify(self, bgr_crop: np.ndarray) -> Tuple[str, float, np.ndarray]:
+        """Classify a cropped image and return (class_name, confidence, probabilities)."""
+        # Downscale crop before conversion - the transform resizes to 224 anyway,
         # so working from 320px instead of full resolution saves time with no accuracy loss
         small = cv2.resize(bgr_crop, (320, 320))
         rgb = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
@@ -289,28 +316,53 @@ class LiveClassifier:
         return self.class_names[pred.item()], conf.item(), avg.cpu().numpy()[0]
 
 
-# ── Main ───────────────────────────────────────────────────────────────────────
+# ------------------------------------------------------------------------------
+# MAIN
+# ------------------------------------------------------------------------------
 
-def main():
+def main() -> None:
+    """Main entry point for live fruit freshness detection."""
     parser = argparse.ArgumentParser(description="Live fruit freshness detection")
     parser.add_argument("--model", default="best_model.pt", help="Path to model checkpoint")
     parser.add_argument("--camera", type=int, default=0, help="Camera device index")
-    parser.add_argument("--ip-camera", type=str, default=None, help="IP camera URL (e.g., http://10.0.0.2:4747/video)")
-    parser.add_argument("--rotate", type=int, default=0, choices=[0, 90, 180, 270],
-                        help="Rotate video feed (useful for phone cameras): 0, 90, 180, or 270 degrees")
+    parser.add_argument(
+        "--ip-camera",
+        type=str,
+        default=None,
+        help="IP camera URL (e.g., http://10.0.0.2:4747/video)"
+    )
+    parser.add_argument(
+        "--rotate",
+        type=int,
+        default=0,
+        choices=[0, 90, 180, 270],
+        help="Rotate video feed (useful for phone cameras): 0, 90, 180, or 270 degrees"
+    )
     parser.add_argument("--width", type=int, default=640)
     parser.add_argument("--height", type=int, default=480)
-    parser.add_argument("--interval", type=float, default=CLASSIFY_INTERVAL,
-                        help=f"Seconds between classifications (default: {CLASSIFY_INTERVAL})")
-    parser.add_argument("--tta", type=int, default=1,
-                        help="Number of TTA augmentation passes (default: 1 = disabled for performance)")
-    parser.add_argument("--fps", type=int, default=TARGET_FPS,
-                        help=f"Target display FPS (default: {TARGET_FPS})")
+    parser.add_argument(
+        "--interval",
+        type=float,
+        default=CLASSIFY_INTERVAL,
+        help=f"Seconds between classifications (default: {CLASSIFY_INTERVAL})"
+    )
+    parser.add_argument(
+        "--tta",
+        type=int,
+        default=1,
+        help="Number of TTA augmentation passes (default: 1 = disabled for performance)"
+    )
+    parser.add_argument(
+        "--fps",
+        type=int,
+        default=TARGET_FPS,
+        help=f"Target display FPS (default: {TARGET_FPS})"
+    )
     args = parser.parse_args()
 
     frame_interval = 1.0 / args.fps
 
-    # ── Load model ──
+    # Load model
     model_path = Path(args.model)
     if not model_path.exists():
         print(f"Model not found: {model_path}")
@@ -333,14 +385,14 @@ def main():
 
     transform = get_val_transform(image_size=224)
 
-    # ── Load fruit detector ──
+    # Load fruit detector
     try:
         fruit_detector = FruitDetector(device)
     except Exception as e:
         print(f"Warning: fruit detector failed to load ({e}). Running without it.")
         fruit_detector = None
 
-    # ── Open camera ──
+    # Open camera
     if args.ip_camera:
         print(f"Connecting to IP camera: {args.ip_camera}")
         cap = cv2.VideoCapture(args.ip_camera)
@@ -362,14 +414,14 @@ def main():
         print(f"Camera: {int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))}x{int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))}")
 
     print("\n" + "=" * 50)
-    print("SpoiledOrNot — Live Fruit Freshness Detector")
+    print("SpoiledOrNot - Live Fruit Freshness Detector")
     print("=" * 50)
     print("  Hold a fruit inside the guide box.")
     print(f"  Results update every {args.interval}s | Display: {args.fps} FPS | TTA passes: {args.tta}")
     print("  SPACE = freeze frame | Q / ESC = quit")
     print("=" * 50 + "\n")
 
-    # ── Start background classifier ──
+    # Start background classifier
     classifier = LiveClassifier(
         model, transform, class_names, device,
         fruit_detector=fruit_detector,
@@ -379,11 +431,11 @@ def main():
     classifier.start()
 
     frozen = False
-    frozen_frame = None
-    last_frame_time = 0
+    frozen_frame: Optional[np.ndarray] = None
+    last_frame_time = 0.0
 
     while True:
-        # ── Throttle display loop to TARGET_FPS ──
+        # Throttle display loop to TARGET_FPS
         now = time.time()
         elapsed = now - last_frame_time
         if elapsed < frame_interval:
@@ -393,7 +445,7 @@ def main():
 
         ret, frame = cap.read()
         if not ret:
-            print("Failed to read frame — retrying…")
+            print("Failed to read frame - retrying...")
             time.sleep(0.1)
             continue
 
@@ -417,7 +469,7 @@ def main():
             classifier.feed(frame, crop)
             display = frame.copy()
         else:
-            display = frozen_frame.copy()
+            display = frozen_frame.copy() if frozen_frame is not None else frame.copy()
 
         result = classifier.get_result()
         if result:
@@ -427,16 +479,19 @@ def main():
 
         display = draw_results(display, class_name, confidence, class_names, all_probs,
                                frozen, fruit_found, fruit_boxes)
-        cv2.imshow("SpoiledOrNot — Live Detector", display)
+        cv2.imshow("SpoiledOrNot - Live Detector", display)
 
         key = cv2.waitKey(1) & 0xFF
-        if key in (27, ord('q')):
+        if key in (27, ord("q")):
             break
-        elif key == ord(' '):
+        elif key == ord(" "):
             frozen = not frozen
             if frozen:
                 frozen_frame = frame.copy()
-                print(f"Frozen — last result: {class_name} ({confidence*100:.1f}%)" if class_name else "Frozen.")
+                if class_name:
+                    print(f"Frozen - last result: {class_name} ({confidence*100:.1f}%)")
+                else:
+                    print("Frozen.")
             else:
                 print("Resumed live feed.")
 
