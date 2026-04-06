@@ -2,7 +2,6 @@
 
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 An AI-powered computer vision system that detects fruit freshness in real-time using deep learning. Built with PyTorch and Flask, this project demonstrates transfer learning with ResNet-18 for binary classification (fresh vs. spoiled) across multiple fruit categories.
 
@@ -305,29 +304,3 @@ If you use this project in your research, please cite:
 - He, K., et al. (2016). Deep residual learning for image recognition. CVPR.
 - Howard, A., et al. (2019). Searching for MobileNetV3. ICCV.
 - Swoyam. (2023). Fresh and Stale Classification Dataset. Kaggle.
-
-## 🤝 Contributing
-
-Contributions welcome! Areas for contribution:
-- Additional fruit/vegetable categories
-- Mobile app development
-- Performance optimizations
-- Documentation improvements
-
-## 📝 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🙏 Acknowledgements
-
-- Dataset provided by Swoyam on Kaggle
-- PyTorch team for the deep learning framework
-- OpenCV community for computer vision tools
-
----
-
-**Project Status:** ✅ Complete (v1.0)
-
-**Last Updated:** April 2026
-
-**Contact:** [Your Email] | [Your Institution]
