@@ -1,5 +1,5 @@
 [project]
-name = "fruit-ml"
+name = "spoiled-or-not"
 version = "0.1.0"
 description = "Fruit freshness classification baseline (PyTorch)"
 readme = "METRICS_WALKTHROUGH.md"

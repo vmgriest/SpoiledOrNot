@@ -95,3 +95,7 @@ logs/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+
+PROJECT_REPORT.md
+report.tex
