@@ -570,7 +570,7 @@ def main() -> None:
     criterion = nn.CrossEntropyLoss()
     optimizer = build_optimizer(model, args.backbone)
 
-    num_epochs = 8
+    num_epochs = 12
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs)
     best_val_acc = -1.0
     checkpoint_path = Path("best_model.pt")

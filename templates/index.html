@@ -619,7 +619,7 @@
                 }
 
                 btn.disabled = true;
-                btn.innerHTML = "<div class="spinner"></div> Connecting...";
+                btn.innerHTML = '<div class="spinner"></div> Connecting...';
 
                 updateContainerAspectRatio();
 
@@ -678,7 +678,7 @@
             const hint = document.getElementById("settingsHint");
             btn.disabled = true;
             const originalHTML = btn.innerHTML;
-            btn.innerHTML = "<div class="spinner"></div> Applying...";
+            btn.innerHTML = '<div class="spinner"></div> Applying...';
 
             // Update the container aspect ratio first so the UI doesn"t flash
             updateContainerAspectRatio();
@@ -774,7 +774,7 @@
             const epochs = parseInt(document.getElementById("epochs").value);
 
             btn.disabled = true;
-            btn.innerHTML = "<div class="spinner"></div> Starting...";
+            btn.innerHTML = '<div class="spinner"></div> Starting...';
 
             try {
                 const response = await fetch("/api/start_training", {
