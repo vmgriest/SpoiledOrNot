@@ -391,6 +391,7 @@
                 </div>
 
                 <div class="result-display waiting" id="resultDisplay">
+                    <div class="produce-type" id="produceType" style="font-size: 1rem; color: #f39c12; margin-bottom: 5px;"></div>
                     <div class="status">Waiting for camera...</div>
                     <div class="confidence">--</div>
                 </div>
@@ -748,21 +749,30 @@
             const display = document.getElementById("resultDisplay");
             const status = display.querySelector(".status");
             const confidence = display.querySelector(".confidence");
+            const produceType = document.getElementById("produceType");
 
             display.className = "result-display";
 
             if (!result.fruit_found) {
                 display.classList.add("waiting");
+                produceType.textContent = "";
                 status.textContent = "No produce detected";
                 confidence.textContent = "--";
             } else if (result.class_name) {
                 const classLower = result.class_name.toLowerCase();
                 const isFresh = classLower.includes("fresh") || classLower === "fresh";
                 display.classList.add(isFresh ? "fresh" : "spoiled");
+                // Show produce type if available
+                if (result.produce_type && result.produce_type !== "Unknown") {
+                    produceType.textContent = result.produce_type;
+                } else {
+                    produceType.textContent = "";
+                }
                 status.textContent = result.class_name;
                 confidence.textContent = (result.confidence * 100).toFixed(1) + "%";
             } else {
                 display.classList.add("waiting");
+                produceType.textContent = "";
                 status.textContent = "Analyzing...";
                 confidence.textContent = "--";
             }

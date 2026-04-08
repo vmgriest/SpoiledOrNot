@@ -34,28 +34,15 @@ CLASSIFY_INTERVAL = 3.0  # was 1.0 - classify every 3 seconds to reduce CPU load
 TARGET_FPS = 15
 FRAME_INTERVAL = 1.0 / TARGET_FPS
 
-# COCO class IDs that count as "fruit/produce" in torchvision's Faster R-CNN
-# Includes fruits and vegetables for broader detection
-# Reference: https://tech.amikelive.com/tech-doc-coco-dataset-predefined-classes/
-FRUIT_COCO_IDS = {
-    52,   # banana
-    53,   # apple
-    54,   # sandwich
-    55,   # orange
-    56,   # broccoli
-    57,   # carrot
-    58,   # hot dog
-    59,   # pizza
-    60,   # donut
-    61,   # cake
-    50,   # broccoli (duplicate, but safe)
-    51,   # carrot (duplicate, but safe)
-}
-# Additional class IDs for broader produce detection (using lower thresholds)
-# These are commonly detected produce items
-PRODUCE_COCO_IDS = {48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61}
-FRUIT_DETECT_THRESHOLD = 0.4   # Lowered from 0.5 for better detection
-PRODUCE_DETECT_THRESHOLD = 0.3  # Even lower for extended produce types
+# COCO class IDs for produce detection (only general fruit/vegetable classes)
+# We don't use COCO for specific produce type identification - we use the freshness model's
+# class names to determine if it's an Apple, Tomato, Banana, etc.
+# This avoids confusion like tomatoes being detected as apples.
+PRODUCE_COCO_IDS = {46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57}
+# 52: banana, 53: apple, 55: orange, 57: carrot
+# 46-51, 54, 56: other food items that might be produce-like
+PRODUCE_DETECT_THRESHOLD = 0.4
+FRUIT_DETECT_THRESHOLD = 0.4  # Kept for backward compatibility
 
 
 # ------------------------------------------------------------------------------
@@ -86,9 +73,9 @@ class FruitDetector:
     @torch.no_grad()
     def contains_fruit(self, bgr_frame: np.ndarray) -> Tuple[bool, list]:
         """
-        Returns (fruit_found: bool, boxes: list of (x1,y1,x2,y2) for found produce).
+        Returns (fruit_found: bool, boxes: list of (x1,y1,x2,y2)).
         Runs on the full frame so nothing is accidentally cropped out.
-        Uses expanded COCO classes including fruits and vegetables.
+        Only detects if produce is present - the freshness model determines the type.
         """
         rgb = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
         pil = Image.fromarray(rgb)
@@ -98,11 +85,8 @@ class FruitDetector:
         boxes = []
         for label, score, box in zip(preds["labels"], preds["scores"], preds["boxes"]):
             label_id = label.item()
-            # Check primary fruit classes with standard threshold
-            if label_id in FRUIT_COCO_IDS and score >= self._threshold:
-                boxes.append(box.cpu().numpy().astype(int).tolist())
-            # Check extended produce classes with lower threshold
-            elif label_id in PRODUCE_COCO_IDS and score >= PRODUCE_DETECT_THRESHOLD:
+            # Check if this is a food/produce item with sufficient confidence
+            if label_id in PRODUCE_COCO_IDS and score >= PRODUCE_DETECT_THRESHOLD:
                 boxes.append(box.cpu().numpy().astype(int).tolist())
 
         return len(boxes) > 0, boxes
@@ -141,7 +125,8 @@ def draw_results(
     all_probs: List[float],
     frozen: bool = False,
     fruit_found: bool = True,
-    fruit_boxes: Optional[List[List[int]]] = None
+    fruit_boxes: Optional[List[List[int]]] = None,
+    produce_type: str = "Unknown"
 ) -> np.ndarray:
     """Overlay live prediction results onto the frame."""
     h, w = frame.shape[:2]
@@ -202,6 +187,13 @@ def draw_results(
             frame, result_text, (10, h - 55), scale=1.05, color=pred_color,
             thickness=2, bg_color=(0, 0, 0), alpha=0.75
         )
+        # Show produce type below freshness result
+        if produce_type and produce_type != "Unknown":
+            type_text = f"Type: {produce_type}"
+            frame = put_text_with_background(
+                frame, type_text, (10, h - 88), scale=0.75, color=(0, 200, 255),
+                thickness=2, bg_color=(0, 0, 0), alpha=0.7
+            )
     else:
         frame = put_text_with_background(
             frame, "Waiting for first result...", (10, h - 55),
@@ -248,7 +240,7 @@ class LiveClassifier:
         self._lock = threading.Lock()
         self._latest_frame: Optional[np.ndarray] = None         # full frame - used for fruit detection
         self._latest_crop: Optional[np.ndarray] = None          # centre crop - used for freshness classification
-        self._result: Optional[Tuple] = None                    # (class_name, confidence, probs, fruit_found, boxes)
+        self._result: Optional[Tuple] = None                    # (class_name, confidence, probs, fruit_found, boxes, produce_type)
         self._running = False
         self._thread: Optional[threading.Thread] = None
 
@@ -309,17 +301,17 @@ class LiveClassifier:
 
                 # Step 2: only run freshness classifier if fruit is present
                 if fruit_found:
-                    class_name, conf, probs = self._classify(crop)
+                    class_name, conf, probs, produce_type = self._classify(crop)
                 else:
-                    class_name, conf, probs = None, 0.0, []
+                    class_name, conf, probs, produce_type = None, 0.0, [], "Unknown"
 
                 with self._lock:
-                    self._result = (class_name, conf, probs, fruit_found, boxes)
+                    self._result = (class_name, conf, probs, fruit_found, boxes, produce_type)
 
             last_classify = time.time()
 
-    def _classify(self, bgr_crop: np.ndarray) -> Tuple[str, float, np.ndarray]:
-        """Classify a cropped image and return (class_name, confidence, probabilities)."""
+    def _classify(self, bgr_crop: np.ndarray) -> Tuple[str, float, np.ndarray, str]:
+        """Classify a cropped image and return (freshness_status, confidence, probabilities, produce_type)."""
         # Downscale crop before conversion - the transform resizes to 224 anyway,
         # so working from 320px instead of full resolution saves time with no accuracy loss
         small = cv2.resize(bgr_crop, (320, 320))
@@ -341,30 +333,53 @@ class LiveClassifier:
         conf, pred = torch.max(avg, dim=1)
         raw_class = self.class_names[pred.item()]
 
-        # Normalize class name to Fresh/Rotten for display
+        # Normalize class name to Fresh/Rotten for display and extract produce type
         # This handles datasets with format like "Apple_Fresh", "Banana_Rotten", etc.
-        normalized_class = self._normalize_freshness_class(raw_class, avg.cpu().numpy()[0])
-        return normalized_class, conf.item(), avg.cpu().numpy()[0]
+        normalized_class, produce_type = self._normalize_freshness_class(raw_class, avg.cpu().numpy()[0])
+        return normalized_class, conf.item(), avg.cpu().numpy()[0], produce_type
 
-    def _normalize_freshness_class(self, raw_class: str, probs: np.ndarray) -> str:
+    def _normalize_freshness_class(self, raw_class: str, probs: np.ndarray) -> Tuple[str, str]:
         """
         Normalize class name to Fresh/Rotten regardless of produce type.
+        Also extracts the produce type (Apple, Tomato, Banana, etc.) from the class name.
         Handles formats like: 'Apple_Fresh', 'fresh_apple', 'Fresh', 'Rotten Banana', etc.
+
+        Returns: (freshness_status, produce_type)
         """
         raw_lower = raw_class.lower()
+        produce_type = "Unknown"
+
+        # Extract produce type from class name patterns like "Apple_Fresh", "Tomato_Rotten"
+        # Common produce types we're looking for
+        known_produce = ["potato", "apple", "tomato", "orange", "banana", "okra", "cucumber"]
+
+        for produce in known_produce:
+            if produce in raw_lower:
+                produce_type = produce.capitalize()
+                break
+
+        # If no known produce found, try to extract from before _fresh or _rotten
+        if produce_type == "Unknown" and "_" in raw_class:
+            # Pattern like "Apple_Fresh" or "Tomato_Rotten"
+            parts = raw_class.lower().split("_")
+            if len(parts) >= 2:
+                # The produce type is usually the first part
+                candidate = parts[0].capitalize()
+                # Exclude freshness indicators
+                if candidate.lower() not in ["fresh", "rotten", "stale", "spoiled"]:
+                    produce_type = candidate
 
         # Check if this is a freshness-based class name
         has_fresh = "fresh" in raw_lower
         has_rotten = any(word in raw_lower for word in ["rotten", "stale", "spoiled", "bad"])
 
         if has_fresh and not has_rotten:
-            return "Fresh"
+            return "Fresh", produce_type
         elif has_rotten and not has_fresh:
-            return "Rotten"
+            return "Rotten", produce_type
         elif has_fresh and has_rotten:
             # Ambiguous - check confidence to decide
-            # Return the raw class but with consistent formatting
-            return raw_class.replace("_", " ").title()
+            return raw_class.replace("_", " ").title(), produce_type
 
         # For datasets with binary classes, assume class 0 is fresh, 1 is rotten
         # or use the class with higher probability
@@ -380,10 +395,11 @@ class LiveClassifier:
                     rotten_idx = i
 
             if fresh_idx >= 0 and rotten_idx >= 0:
-                return "Fresh" if probs[fresh_idx] > probs[rotten_idx] else "Rotten"
+                freshness = "Fresh" if probs[fresh_idx] > probs[rotten_idx] else "Rotten"
+                return freshness, produce_type
 
         # Default: return cleaned up raw class
-        return raw_class.replace("_", " ").title()
+        return raw_class.replace("_", " ").title(), produce_type
 
 
 # ------------------------------------------------------------------------------
@@ -543,12 +559,12 @@ def main() -> None:
 
         result = classifier.get_result()
         if result:
-            class_name, confidence, all_probs, fruit_found, fruit_boxes = result
+            class_name, confidence, all_probs, fruit_found, fruit_boxes, produce_type = result
         else:
-            class_name, confidence, all_probs, fruit_found, fruit_boxes = None, 0.0, [], True, []
+            class_name, confidence, all_probs, fruit_found, fruit_boxes, produce_type = None, 0.0, [], True, [], "Unknown"
 
         display = draw_results(display, class_name, confidence, class_names, all_probs,
-                               frozen, fruit_found, fruit_boxes)
+                               frozen, fruit_found, fruit_boxes, produce_type)
         cv2.imshow("SpoiledOrNot - Live Detector", display)
 
         key = cv2.waitKey(1) & 0xFF

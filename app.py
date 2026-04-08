@@ -81,11 +81,15 @@ CLASSIFY_INTERVAL = 1.0  # seconds between classifications
 # CONFIGURATION
 # ------------------------------------------------------------------------------
 
-# Expanded COCO class IDs for fruits and vegetables
-FRUIT_COCO_IDS = {52, 53, 55, 57}  # banana, apple, orange, carrot
-PRODUCE_COCO_IDS = {48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61}  # Extended produce
-FRUIT_DETECT_THRESHOLD = 0.4
-PRODUCE_DETECT_THRESHOLD = 0.3
+# COCO class IDs for produce detection (only general fruit/vegetable classes)
+# We don't use COCO for specific produce type identification - we use the freshness model's
+# class names to determine if it's an Apple, Tomato, Banana, etc.
+# This avoids confusion like tomatoes being detected as apples.
+PRODUCE_COCO_IDS = {46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57}
+# 52: banana, 53: apple, 55: orange, 57: carrot
+# 46-51, 54, 56: other food items that might be produce-like
+PRODUCE_DETECT_THRESHOLD = 0.4
+FRUIT_DETECT_THRESHOLD = 0.4  # Kept for backward compatibility
 
 
 class FruitDetector:
@@ -114,9 +118,7 @@ class FruitDetector:
         boxes = []
         for label, score, box in zip(preds["labels"], preds["scores"], preds["boxes"]):
             label_id = label.item()
-            if label_id in FRUIT_COCO_IDS and score >= self._threshold:
-                boxes.append(box.cpu().numpy().astype(int).tolist())
-            elif label_id in PRODUCE_COCO_IDS and score >= PRODUCE_DETECT_THRESHOLD:
+            if label_id in PRODUCE_COCO_IDS and score >= PRODUCE_DETECT_THRESHOLD:
                 boxes.append(box.cpu().numpy().astype(int).tolist())
 
         return len(boxes) > 0, boxes
@@ -151,23 +153,47 @@ def load_model_safe(model_path: str = "best_model.pt") -> Tuple[bool, str]:
         return False, f"Error loading model: {e}"
 
 
-def normalize_freshness_class(raw_class: str, class_names: list, probs: list = None) -> str:
+def normalize_freshness_class(raw_class: str, class_names: list, probs: list = None) -> Tuple[str, str]:
     """
     Normalize class name to Fresh/Rotten regardless of produce type.
+    Also extracts the produce type (Apple, Tomato, Banana, etc.) from the class name.
     Handles formats like: 'Apple_Fresh', 'fresh_apple', 'Fresh', 'Rotten Banana', etc.
+
+    Returns: (freshness_status, produce_type)
     """
     raw_lower = raw_class.lower()
+    produce_type = "Unknown"
+
+    # Extract produce type from class name patterns like "Apple_Fresh", "Tomato_Rotten"
+    # Common produce types we're looking for
+    known_produce = ["potato", "apple", "tomato", "orange", "banana", "okra", "cucumber"]
+
+    for produce in known_produce:
+        if produce in raw_lower:
+            produce_type = produce.capitalize()
+            break
+
+    # If no known produce found, try to extract from before _fresh or _rotten
+    if produce_type == "Unknown" and "_" in raw_class:
+        # Pattern like "Apple_Fresh" or "Tomato_Rotten"
+        parts = raw_class.lower().split("_")
+        if len(parts) >= 2:
+            # The produce type is usually the first part
+            candidate = parts[0].capitalize()
+            # Exclude freshness indicators
+            if candidate.lower() not in ["fresh", "rotten", "stale", "spoiled"]:
+                produce_type = candidate
 
     # Check if this is a freshness-based class name
     has_fresh = "fresh" in raw_lower
     has_rotten = any(word in raw_lower for word in ["rotten", "stale", "spoiled", "bad"])
 
     if has_fresh and not has_rotten:
-        return "Fresh"
+        return "Fresh", produce_type
     elif has_rotten and not has_fresh:
-        return "Rotten"
+        return "Rotten", produce_type
     elif has_fresh and has_rotten:
-        return raw_class.replace("_", " ").title()
+        return raw_class.replace("_", " ").title(), produce_type
 
     # For binary classification, try to infer from class names
     if len(class_names) == 2:
@@ -181,9 +207,10 @@ def normalize_freshness_class(raw_class: str, class_names: list, probs: list = N
                 rotten_idx = i
 
         if probs is not None and fresh_idx >= 0 and rotten_idx >= 0:
-            return "Fresh" if probs[fresh_idx] > probs[rotten_idx] else "Rotten"
+            freshness = "Fresh" if probs[fresh_idx] > probs[rotten_idx] else "Rotten"
+            return freshness, produce_type
 
-    return raw_class.replace("_", " ").title()
+    return raw_class.replace("_", " ").title(), produce_type
 
 
 def classify_worker() -> None:
@@ -228,21 +255,24 @@ def classify_worker() -> None:
                                 conf, pred = torch.max(probs, dim=1)
 
                         raw_class = class_names[pred.item()]
-                        # Normalize to Fresh/Rotten for consistent display
-                        class_name = normalize_freshness_class(raw_class, class_names, probs[0].cpu().numpy())
+                        # Normalize to Fresh/Rotten for consistent display and extract produce type
+                        class_name, produce_type = normalize_freshness_class(raw_class, class_names, probs[0].cpu().numpy())
                         confidence = conf.item()
                     except Exception:
                         class_name = None
                         confidence = 0.0
+                        produce_type = "Unknown"
                 else:
                     class_name = None
                     confidence = 0.0
+                    produce_type = "Unknown"
 
                 with result_lock:
                     latest_result = {
                         "class_name": class_name,
                         "confidence": confidence,
                         "fruit_found": fruit_found,
+                        "produce_type": produce_type,
                         "timestamp": time.time(),
                     }
 
@@ -284,12 +314,17 @@ def draw_overlay(frame: np.ndarray, result: Dict[str, Any], frozen: bool = False
     cv2.putText(frame, status, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
 
     # Result text
+    produce_type = result.get("produce_type", "Unknown")
     if not result["fruit_found"]:
         text = "No produce detected"
         color = (140, 140, 140)
     elif class_name:
         text = f"{class_name.upper()}: {result['confidence']*100:.1f}%"
         color = (0, 255, 0) if is_fresh else (0, 0, 255)
+        # Show produce type above the freshness result
+        if produce_type and produce_type != "Unknown":
+            type_text = f"Type: {produce_type}"
+            cv2.putText(frame, type_text, (10, h - 55), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 200, 0), 2)
     else:
         text = "Analyzing..."
         color = (180, 180, 180)

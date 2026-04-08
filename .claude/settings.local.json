@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(pip install:*)",
-      "Bash(python camera_detect.py)"
+      "Bash(python camera_detect.py)",
+      "Bash(python -m py_compile camera_detect.py app.py)"
     ]
   }
 }
