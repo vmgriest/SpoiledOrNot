@@ -28,10 +28,10 @@ from baseline import get_val_transform, load_model_from_checkpoint
 # ------------------------------------------------------------------------------
 
 # Seconds between each classification (lower = more responsive, higher CPU use)
-CLASSIFY_INTERVAL = 3.0  # was 1.0 - classify every 3 seconds to reduce CPU load
+CLASSIFY_INTERVAL = 1.0  # classify every second for faster results
 
-# Cap the display loop at 15 FPS - prevents the camera loop from spinning at full speed
-TARGET_FPS = 15
+# Cap the display loop at 30 FPS - smoother video
+TARGET_FPS = 30
 FRAME_INTERVAL = 1.0 / TARGET_FPS
 
 # COCO class IDs for produce detection (only general fruit/vegetable classes)
@@ -260,8 +260,8 @@ class LiveClassifier:
     def feed(self, full_frame: np.ndarray, crop: np.ndarray) -> None:
         """Camera loop hands off the full frame (for detection) and centre crop (for classification)."""
         with self._lock:
-            self._latest_frame = full_frame.copy()
-            self._latest_crop = crop.copy()
+            self._latest_frame = full_frame  # No copy - we don't modify it
+            self._latest_crop = crop.copy()  # Only crop needs copy as it might be used elsewhere
 
     def get_result(self) -> Optional[Tuple]:
         """Returns (class_name, confidence, probs, fruit_found, boxes) or None if not ready yet."""

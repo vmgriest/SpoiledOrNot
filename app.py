@@ -74,7 +74,8 @@ classifier_thread: Optional[threading.Thread] = None
 classifier_running = False
 current_frame_for_classify: Optional[np.ndarray] = None
 classify_lock = threading.Lock()
-CLASSIFY_INTERVAL = 1.0  # seconds between classifications
+CLASSIFY_INTERVAL = 2.0  # classify every 2 seconds to reduce lag
+last_classify_time = 0.0
 
 
 # ------------------------------------------------------------------------------
