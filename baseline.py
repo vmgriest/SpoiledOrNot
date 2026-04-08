@@ -141,25 +141,45 @@ def find_image_folders(root: Path) -> Tuple[Optional[Path], Optional[str]]:
 # -----------------------------------------------------------------------------
 
 def get_train_transform(image_size: int = 224) -> transforms.Compose:
-    """Get training data augmentation transforms."""
+    """Get training data augmentation transforms optimized for spoilage detection."""
     return transforms.Compose([
-        transforms.RandomResizedCrop(image_size, scale=(0.6, 1.0)),
+        transforms.RandomResizedCrop(image_size, scale=(0.5, 1.0)),  # More zoom variety
         transforms.RandomHorizontalFlip(),
-        transforms.RandomVerticalFlip(),                          # ADD: handles upside-down
-        transforms.RandomRotation(180),                           # CHANGE: was 15 degrees, now full rotation
-        transforms.ColorJitter(brightness=0.3, contrast=0.3,
-                               saturation=0.3, hue=0.1),          # INCREASE: more colour variety
-        transforms.RandomGrayscale(p=0.05),                       # ADD: robustness
+        transforms.RandomVerticalFlip(),
+        transforms.RandomRotation(180),  # Full rotation for any camera angle
+        # Enhanced color jittering to capture spoilage characteristics
+        # Rotten produce often has different color/tone (browning, darkening)
+        transforms.ColorJitter(brightness=0.4, contrast=0.4,
+                               saturation=0.4, hue=0.15),
+        transforms.RandomGrayscale(p=0.1),  # Slightly higher chance - helps with texture focus
+        # Add Gaussian blur to simulate different focus conditions
+        transforms.RandomApply([
+            transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0))
+        ], p=0.3),
+        # Add posterization to simulate different lighting conditions
+        transforms.RandomPosterize(bits=4, p=0.2),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                              std=[0.229, 0.224, 0.225]),
+        # Random erasing to simulate occlusions (partially hidden produce)
+        transforms.RandomErasing(p=0.2, scale=(0.02, 0.1), ratio=(0.3, 3.3)),
     ])
 
 
 def get_val_transform(image_size: int = 224) -> transforms.Compose:
-    """Deterministic transform for validation and test (no augmentation)."""
+    """Deterministic transform for validation and test (minimal augmentation)."""
     return transforms.Compose([
         transforms.Resize((image_size, image_size)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+
+
+def get_inference_transform_with_tta(image_size: int = 224) -> transforms.Compose:
+    """Inference transform with slight augmentations for challenging cases (rotten produce)."""
+    return transforms.Compose([
+        transforms.Resize((image_size, image_size)),
+        transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])

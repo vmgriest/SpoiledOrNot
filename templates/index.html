@@ -374,7 +374,7 @@
     <div class="container">
         <header>
             <h1>SpoiledOrNot</h1>
-            <p>Real-time Fruit Freshness Detection with AI</p>
+            <p>Real-time Produce Freshness Detection with AI</p>
         </header>
 
         <div class="grid">
@@ -753,10 +753,11 @@
 
             if (!result.fruit_found) {
                 display.classList.add("waiting");
-                status.textContent = "No fruit detected";
+                status.textContent = "No produce detected";
                 confidence.textContent = "--";
             } else if (result.class_name) {
-                const isFresh = result.class_name.toLowerCase().includes("fresh");
+                const classLower = result.class_name.toLowerCase();
+                const isFresh = classLower.includes("fresh") || classLower === "fresh";
                 display.classList.add(isFresh ? "fresh" : "spoiled");
                 status.textContent = result.class_name;
                 confidence.textContent = (result.confidence * 100).toFixed(1) + "%";

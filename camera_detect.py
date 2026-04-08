@@ -35,9 +35,27 @@ TARGET_FPS = 15
 FRAME_INTERVAL = 1.0 / TARGET_FPS
 
 # COCO class IDs that count as "fruit/produce" in torchvision's Faster R-CNN
-# 52=banana, 53=apple, 55=orange, 57=carrot - covers common fruits
-FRUIT_COCO_IDS = {52, 53, 55, 57}
-FRUIT_DETECT_THRESHOLD = 0.5   # min detector confidence to count as fruit
+# Includes fruits and vegetables for broader detection
+# Reference: https://tech.amikelive.com/tech-doc-coco-dataset-predefined-classes/
+FRUIT_COCO_IDS = {
+    52,   # banana
+    53,   # apple
+    54,   # sandwich
+    55,   # orange
+    56,   # broccoli
+    57,   # carrot
+    58,   # hot dog
+    59,   # pizza
+    60,   # donut
+    61,   # cake
+    50,   # broccoli (duplicate, but safe)
+    51,   # carrot (duplicate, but safe)
+}
+# Additional class IDs for broader produce detection (using lower thresholds)
+# These are commonly detected produce items
+PRODUCE_COCO_IDS = {48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61}
+FRUIT_DETECT_THRESHOLD = 0.4   # Lowered from 0.5 for better detection
+PRODUCE_DETECT_THRESHOLD = 0.3  # Even lower for extended produce types
 
 
 # ------------------------------------------------------------------------------
@@ -47,7 +65,7 @@ FRUIT_DETECT_THRESHOLD = 0.5   # min detector confidence to count as fruit
 class FruitDetector:
     """
     Lightweight wrapper around torchvision's Faster R-CNN (MobileNet backbone).
-    Only flags detections whose COCO class is in FRUIT_COCO_IDS.
+    Flags detections whose COCO class is in FRUIT_COCO_IDS or PRODUCE_COCO_IDS.
     No internet download needed after the first run - weights are cached locally.
     """
 
@@ -56,20 +74,21 @@ class FruitDetector:
             FasterRCNN_MobileNet_V3_Large_320_FPN_Weights,
             fasterrcnn_mobilenet_v3_large_320_fpn,
         )
-        print("Loading fruit detector (Faster R-CNN MobileNet)...")
+        print("Loading produce detector (Faster R-CNN MobileNet)...")
         weights = FasterRCNN_MobileNet_V3_Large_320_FPN_Weights.DEFAULT
         self._model = fasterrcnn_mobilenet_v3_large_320_fpn(weights=weights)
         self._model.eval().to(device)
         self._transform = weights.transforms()
         self._device = device
         self._threshold = threshold
-        print("Fruit detector ready.")
+        print("Produce detector ready.")
 
     @torch.no_grad()
     def contains_fruit(self, bgr_frame: np.ndarray) -> Tuple[bool, list]:
         """
-        Returns (fruit_found: bool, boxes: list of (x1,y1,x2,y2) for found fruits).
+        Returns (fruit_found: bool, boxes: list of (x1,y1,x2,y2) for found produce).
         Runs on the full frame so nothing is accidentally cropped out.
+        Uses expanded COCO classes including fruits and vegetables.
         """
         rgb = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
         pil = Image.fromarray(rgb)
@@ -78,7 +97,12 @@ class FruitDetector:
 
         boxes = []
         for label, score, box in zip(preds["labels"], preds["scores"], preds["boxes"]):
-            if score >= self._threshold and label.item() in FRUIT_COCO_IDS:
+            label_id = label.item()
+            # Check primary fruit classes with standard threshold
+            if label_id in FRUIT_COCO_IDS and score >= self._threshold:
+                boxes.append(box.cpu().numpy().astype(int).tolist())
+            # Check extended produce classes with lower threshold
+            elif label_id in PRODUCE_COCO_IDS and score >= PRODUCE_DETECT_THRESHOLD:
                 boxes.append(box.cpu().numpy().astype(int).tolist())
 
         return len(boxes) > 0, boxes
@@ -122,6 +146,9 @@ def draw_results(
     """Overlay live prediction results onto the frame."""
     h, w = frame.shape[:2]
 
+    # Check if fresh (handles normalized "Fresh" or original "Apple_Fresh" etc.)
+    is_fresh = class_name and ("fresh" in class_name.lower() or class_name.lower() == "fresh")
+
     # Coloured border - green = fresh, red = spoiled, orange = frozen, grey = no fruit
     if frozen:
         border_color = (255, 180, 0)
@@ -129,7 +156,7 @@ def draw_results(
     elif not fruit_found:
         border_color = (80, 80, 80)
         border_thickness = 2
-    elif class_name and "fresh" in class_name.lower():
+    elif is_fresh:
         border_color = (0, 220, 0)
         border_thickness = 4
     elif class_name:
@@ -140,8 +167,7 @@ def draw_results(
         border_thickness = 2
     cv2.rectangle(frame, (0, 0), (w - 1, h - 1), border_color, border_thickness)
 
-    # Draw detected fruit bounding boxes - coordinates are full-frame since
-    # detection now runs on the full frame, not the crop
+    # Draw detected produce bounding boxes
     if fruit_boxes and not frozen:
         for (bx1, by1, bx2, by2) in fruit_boxes:
             cv2.rectangle(frame, (bx1, by1), (bx2, by2), (0, 255, 180), 2)
@@ -160,17 +186,17 @@ def draw_results(
         x1, y1 = (w - box_size) // 2, (h - box_size) // 2
         x2, y2 = x1 + box_size, y1 + box_size
         cv2.rectangle(frame, (x1, y1), (x2, y2), (200, 200, 200), 1)
-        cv2.putText(frame, "Position fruit here",
+        cv2.putText(frame, "Position produce here",
                     (x1 + 5, y1 - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 200, 200), 1)
 
     # Main prediction label
     if not fruit_found and not frozen:
         frame = put_text_with_background(
-            frame, "No fruit detected", (10, h - 55),
+            frame, "No produce detected", (10, h - 55),
             scale=0.85, color=(140, 140, 140), bg_color=(0, 0, 0), alpha=0.65
         )
     elif class_name:
-        pred_color = (0, 255, 0) if "fresh" in class_name.lower() else (0, 60, 255)
+        pred_color = (0, 255, 0) if is_fresh else (0, 60, 255)
         result_text = f"{class_name.upper()}  {confidence * 100:.1f}%"
         frame = put_text_with_background(
             frame, result_text, (10, h - 55), scale=1.05, color=pred_color,
@@ -313,7 +339,51 @@ class LiveClassifier:
 
         avg = torch.stack(all_probs).mean(0)
         conf, pred = torch.max(avg, dim=1)
-        return self.class_names[pred.item()], conf.item(), avg.cpu().numpy()[0]
+        raw_class = self.class_names[pred.item()]
+
+        # Normalize class name to Fresh/Rotten for display
+        # This handles datasets with format like "Apple_Fresh", "Banana_Rotten", etc.
+        normalized_class = self._normalize_freshness_class(raw_class, avg.cpu().numpy()[0])
+        return normalized_class, conf.item(), avg.cpu().numpy()[0]
+
+    def _normalize_freshness_class(self, raw_class: str, probs: np.ndarray) -> str:
+        """
+        Normalize class name to Fresh/Rotten regardless of produce type.
+        Handles formats like: 'Apple_Fresh', 'fresh_apple', 'Fresh', 'Rotten Banana', etc.
+        """
+        raw_lower = raw_class.lower()
+
+        # Check if this is a freshness-based class name
+        has_fresh = "fresh" in raw_lower
+        has_rotten = any(word in raw_lower for word in ["rotten", "stale", "spoiled", "bad"])
+
+        if has_fresh and not has_rotten:
+            return "Fresh"
+        elif has_rotten and not has_fresh:
+            return "Rotten"
+        elif has_fresh and has_rotten:
+            # Ambiguous - check confidence to decide
+            # Return the raw class but with consistent formatting
+            return raw_class.replace("_", " ").title()
+
+        # For datasets with binary classes, assume class 0 is fresh, 1 is rotten
+        # or use the class with higher probability
+        if len(self.class_names) == 2:
+            # Binary classification - check which index has "fresh" vs "rotten"
+            fresh_idx = -1
+            rotten_idx = -1
+            for i, name in enumerate(self.class_names):
+                name_lower = name.lower()
+                if "fresh" in name_lower:
+                    fresh_idx = i
+                elif any(word in name_lower for word in ["rotten", "stale", "spoiled"]):
+                    rotten_idx = i
+
+            if fresh_idx >= 0 and rotten_idx >= 0:
+                return "Fresh" if probs[fresh_idx] > probs[rotten_idx] else "Rotten"
+
+        # Default: return cleaned up raw class
+        return raw_class.replace("_", " ").title()
 
 
 # ------------------------------------------------------------------------------

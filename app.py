@@ -81,12 +81,15 @@ CLASSIFY_INTERVAL = 1.0  # seconds between classifications
 # CONFIGURATION
 # ------------------------------------------------------------------------------
 
+# Expanded COCO class IDs for fruits and vegetables
 FRUIT_COCO_IDS = {52, 53, 55, 57}  # banana, apple, orange, carrot
-FRUIT_DETECT_THRESHOLD = 0.5
+PRODUCE_COCO_IDS = {48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61}  # Extended produce
+FRUIT_DETECT_THRESHOLD = 0.4
+PRODUCE_DETECT_THRESHOLD = 0.3
 
 
 class FruitDetector:
-    """Lightweight wrapper around torchvision's Faster R-CNN."""
+    """Lightweight wrapper around torchvision's Faster R-CNN for produce detection."""
 
     def __init__(self, device: torch.device, threshold: float = FRUIT_DETECT_THRESHOLD):
         from torchvision.models.detection import (
@@ -102,7 +105,7 @@ class FruitDetector:
 
     @torch.no_grad()
     def contains_fruit(self, bgr_frame: np.ndarray) -> Tuple[bool, list]:
-        """Check if frame contains fruit. Returns (found, bounding_boxes)."""
+        """Check if frame contains produce. Returns (found, bounding_boxes)."""
         rgb = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
         pil = Image.fromarray(rgb)
         tensor = self._transform(pil).unsqueeze(0).to(self._device)
@@ -110,7 +113,10 @@ class FruitDetector:
 
         boxes = []
         for label, score, box in zip(preds["labels"], preds["scores"], preds["boxes"]):
-            if score >= self._threshold and label.item() in FRUIT_COCO_IDS:
+            label_id = label.item()
+            if label_id in FRUIT_COCO_IDS and score >= self._threshold:
+                boxes.append(box.cpu().numpy().astype(int).tolist())
+            elif label_id in PRODUCE_COCO_IDS and score >= PRODUCE_DETECT_THRESHOLD:
                 boxes.append(box.cpu().numpy().astype(int).tolist())
 
         return len(boxes) > 0, boxes
@@ -143,6 +149,41 @@ def load_model_safe(model_path: str = "best_model.pt") -> Tuple[bool, str]:
         return True, f"Model loaded: {ckpt.get('arch', 'unknown')}, classes: {class_names}"
     except Exception as e:
         return False, f"Error loading model: {e}"
+
+
+def normalize_freshness_class(raw_class: str, class_names: list, probs: list = None) -> str:
+    """
+    Normalize class name to Fresh/Rotten regardless of produce type.
+    Handles formats like: 'Apple_Fresh', 'fresh_apple', 'Fresh', 'Rotten Banana', etc.
+    """
+    raw_lower = raw_class.lower()
+
+    # Check if this is a freshness-based class name
+    has_fresh = "fresh" in raw_lower
+    has_rotten = any(word in raw_lower for word in ["rotten", "stale", "spoiled", "bad"])
+
+    if has_fresh and not has_rotten:
+        return "Fresh"
+    elif has_rotten and not has_fresh:
+        return "Rotten"
+    elif has_fresh and has_rotten:
+        return raw_class.replace("_", " ").title()
+
+    # For binary classification, try to infer from class names
+    if len(class_names) == 2:
+        fresh_idx = -1
+        rotten_idx = -1
+        for i, name in enumerate(class_names):
+            name_lower = name.lower()
+            if "fresh" in name_lower:
+                fresh_idx = i
+            elif any(word in name_lower for word in ["rotten", "stale", "spoiled"]):
+                rotten_idx = i
+
+        if probs is not None and fresh_idx >= 0 and rotten_idx >= 0:
+            return "Fresh" if probs[fresh_idx] > probs[rotten_idx] else "Rotten"
+
+    return raw_class.replace("_", " ").title()
 
 
 def classify_worker() -> None:
@@ -186,7 +227,9 @@ def classify_worker() -> None:
                                 probs = torch.softmax(logits, dim=1)
                                 conf, pred = torch.max(probs, dim=1)
 
-                        class_name = class_names[pred.item()]
+                        raw_class = class_names[pred.item()]
+                        # Normalize to Fresh/Rotten for consistent display
+                        class_name = normalize_freshness_class(raw_class, class_names, probs[0].cpu().numpy())
                         confidence = conf.item()
                     except Exception:
                         class_name = None
@@ -212,14 +255,17 @@ def draw_overlay(frame: np.ndarray, result: Dict[str, Any], frozen: bool = False
     """Draw UI overlay on frame."""
     h, w = frame.shape[:2]
 
-    # Border color
+    # Border color - check for "fresh" in normalized class name
+    class_name = result.get("class_name", "")
+    is_fresh = class_name and ("fresh" in class_name.lower() or class_name.lower() == "fresh")
+
     if frozen:
         border_color = (255, 180, 0)
     elif not result["fruit_found"]:
         border_color = (80, 80, 80)
-    elif result["class_name"] and "fresh" in result["class_name"].lower():
+    elif class_name and is_fresh:
         border_color = (0, 220, 0)
-    elif result["class_name"]:
+    elif class_name:
         border_color = (0, 0, 220)
     else:
         border_color = (100, 100, 100)
@@ -239,11 +285,11 @@ def draw_overlay(frame: np.ndarray, result: Dict[str, Any], frozen: bool = False
 
     # Result text
     if not result["fruit_found"]:
-        text = "No fruit detected"
+        text = "No produce detected"
         color = (140, 140, 140)
-    elif result["class_name"]:
-        text = f"{result['class_name'].upper()}: {result['confidence']*100:.1f}%"
-        color = (0, 255, 0) if "fresh" in result["class_name"].lower() else (0, 0, 255)
+    elif class_name:
+        text = f"{class_name.upper()}: {result['confidence']*100:.1f}%"
+        color = (0, 255, 0) if is_fresh else (0, 0, 255)
     else:
         text = "Analyzing..."
         color = (180, 180, 180)
