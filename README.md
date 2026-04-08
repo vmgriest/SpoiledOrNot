@@ -5,6 +5,8 @@
 
 An AI-powered computer vision system that detects fruit freshness in real-time using deep learning. Built with PyTorch and Flask, this project demonstrates transfer learning with ResNet-18 for binary classification (fresh vs. spoiled) across multiple fruit categories.
 
+Demo: https://youtu.be/sikMSuCsDZ8
+
 ## 📋 Table of Contents
 
 - [Features](#features)
