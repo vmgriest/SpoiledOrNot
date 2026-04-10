@@ -1,9 +1,9 @@
-# 🍎 SpoiledOrNot - Real-Time Fruit Freshness Detector
+# 🍎 SpoiledOrNot - Real-Time Produce Freshness Detector
 
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
 
-An AI-powered computer vision system that detects fruit freshness in real-time using deep learning. Built with PyTorch and Flask, this project demonstrates transfer learning with ResNet-18 for binary classification (fresh vs. spoiled) across multiple fruit categories.
+An AI-powered computer vision system that detects produce freshness in real-time using deep learning. Built with PyTorch and Flask, this project demonstrates transfer learning with ResNet-18 for binary classification (fresh vs. spoiled) across multiple produce categories.
 
 Demo: https://youtu.be/sikMSuCsDZ8
 
@@ -26,7 +26,7 @@ Demo: https://youtu.be/sikMSuCsDZ8
 - **Web Interface:** Flask-based responsive UI with live video streaming
 - **Mobile Support:** Camera rotation (0°, 90°, 180°, 270°) for phone cameras via DroidCam
 - **High Accuracy:** 94%+ validation accuracy using transfer learning
-- **Fruit Detection:** Automatic fruit region detection using Faster R-CNN
+- **Produce Detection:** Automatic produce region detection using Faster R-CNN
 - **Training Pipeline:** Complete training system with progress tracking
 - **Comprehensive Metrics:** Accuracy, precision, recall, F1-score, and ROC-AUC analysis
 
@@ -220,11 +220,11 @@ Conv(64→128) → ReLU → AdaptivePool →
 FC(128→64) → ReLU → Dropout → FC(64→classes)
 ```
 
-### Fruit Detection (Pre-processing)
+### Produce Detection (Pre-processing)
 
 **Faster R-CNN MobileNet-V3:**
 - COCO-trained object detector
-- Identifies fruit regions before classification
+- Identifies produce regions before classification
 - Supported classes: Apple, Banana, Orange, Carrot
 - Confidence threshold: 0.5
 
@@ -293,7 +293,7 @@ If you use this project in your research, please cite:
 
 ```bibtex
 @misc{spoiledornot2024,
-  title={SpoiledOrNot: Real-Time Fruit Freshness Detection},
+  title={SpoiledOrNot: Real-Time Produce Freshness Detection},
   author={[Your Name]},
   year={2024},
   publisher={GitHub},
