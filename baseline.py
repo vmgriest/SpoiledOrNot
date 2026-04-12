@@ -9,7 +9,7 @@ import argparse
 import os
 import sys
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, Dict, List
 
 import kagglehub
 import matplotlib.pyplot as plt
@@ -23,12 +23,78 @@ from sklearn.metrics import (
     roc_auc_score,
     roc_curve,
 )
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, random_split, Subset
 from torchvision import datasets, models, transforms
 
 
 # -----------------------------------------------------------------------------
-# 1. DOWNLOAD DATASET & DISCOVER STRUCTURE
+# 1. CLASS FILTERING (for dataset alignment)
+# -----------------------------------------------------------------------------
+
+def normalize_class_name(class_name: str) -> str:
+    """Normalize class names to handle spelling variations."""
+    # Common spelling corrections
+    corrections = {
+        'freshpatato': 'freshpotato',
+        'freshtamto': 'freshtomato',
+        'rottenpatato': 'rottenpotato',
+        'rottentamto': 'rottentomato',
+        'freshbittergroud': None,  # Remove these classes
+        'freshcapsicum': None,
+        'rottenbittergroud': None,
+        'rottencapsicum': None,
+    }
+    return corrections.get(class_name, class_name)
+
+
+class FilteredDataset(torch.utils.data.Dataset):
+    """Dataset that filters and remaps classes."""
+    
+    def __init__(self, original_dataset, class_mapping, transform=None):
+        """
+        Args:
+            original_dataset: The original ImageFolder dataset
+            class_mapping: Dict mapping original label -> new label
+            transform: Optional transform to apply
+        """
+        self.original_dataset = original_dataset
+        self.class_mapping = class_mapping
+        self.transform = transform
+        
+        # Create list of indices to keep (only those with mapping)
+        self.indices = []
+        for idx in range(len(original_dataset)):
+            _, label = original_dataset[idx]
+            if label in class_mapping:
+                self.indices.append(idx)
+        
+        # Get the new class names in order
+        inverse_mapping = {}
+        for old, new in class_mapping.items():
+            inverse_mapping[new] = old
+        
+        # Build class names list
+        self.classes = []
+        for new_idx in sorted(inverse_mapping.keys()):
+            old_idx = inverse_mapping[new_idx]
+            self.classes.append(original_dataset.classes[old_idx])
+        
+    def __len__(self):
+        return len(self.indices)
+    
+    def __getitem__(self, idx):
+        original_idx = self.indices[idx]
+        img, old_label = self.original_dataset[original_idx]
+        new_label = self.class_mapping[old_label]
+        
+        if self.transform:
+            img = self.transform(img)
+            
+        return img, new_label
+
+
+# -----------------------------------------------------------------------------
+# 2. DOWNLOAD DATASET & DISCOVER STRUCTURE
 # -----------------------------------------------------------------------------
 
 def get_data_path() -> Path:
@@ -143,25 +209,20 @@ def find_image_folders(root: Path) -> Tuple[Optional[Path], Optional[str]]:
 def get_train_transform(image_size: int = 224) -> transforms.Compose:
     """Get training data augmentation transforms optimized for spoilage detection."""
     return transforms.Compose([
-        transforms.RandomResizedCrop(image_size, scale=(0.5, 1.0)),  # More zoom variety
+        transforms.RandomResizedCrop(image_size, scale=(0.5, 1.0)),
         transforms.RandomHorizontalFlip(),
         transforms.RandomVerticalFlip(),
-        transforms.RandomRotation(180),  # Full rotation for any camera angle
-        # Enhanced color jittering to capture spoilage characteristics
-        # Rotten produce often has different color/tone (browning, darkening)
+        transforms.RandomRotation(180),
         transforms.ColorJitter(brightness=0.4, contrast=0.4,
                                saturation=0.4, hue=0.15),
-        transforms.RandomGrayscale(p=0.1),  # Slightly higher chance - helps with texture focus
-        # Add Gaussian blur to simulate different focus conditions
+        transforms.RandomGrayscale(p=0.1),
         transforms.RandomApply([
             transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0))
         ], p=0.3),
-        # Add posterization to simulate different lighting conditions
         transforms.RandomPosterize(bits=4, p=0.2),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                              std=[0.229, 0.224, 0.225]),
-        # Random erasing to simulate occlusions (partially hidden produce)
         transforms.RandomErasing(p=0.2, scale=(0.02, 0.1), ratio=(0.3, 3.3)),
     ])
 
@@ -175,33 +236,6 @@ def get_val_transform(image_size: int = 224) -> transforms.Compose:
     ])
 
 
-def get_inference_transform_with_tta(image_size: int = 224) -> transforms.Compose:
-    """Inference transform with slight augmentations for challenging cases (rotten produce)."""
-    return transforms.Compose([
-        transforms.Resize((image_size, image_size)),
-        transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
-
-
-class _TransformSubset(torch.utils.data.Dataset):
-    """Wraps a Subset so we can apply a different transform than the parent dataset."""
-
-    def __init__(self, subset: torch.utils.data.Subset, transform: transforms.Compose):
-        self.subset = subset
-        self.transform = transform
-
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int]:
-        img, label = self.subset[idx]
-        if self.transform:
-            img = self.transform(img)
-        return img, label
-
-    def __len__(self) -> int:
-        return len(self.subset)
-
-
 def build_dataloaders(
     data_dir: Union[str, Path],
     batch_size: int = 32,
@@ -209,41 +243,104 @@ def build_dataloaders(
     val_ratio: float = 0.2,
     seed: int = 42,
     device: Optional[torch.device] = None
-) -> Tuple[DataLoader, DataLoader, list]:
-    """Build training and validation dataloaders."""
+) -> Tuple[DataLoader, DataLoader, List[str]]:
+    """Build training and validation dataloaders with class alignment."""
     data_dir = Path(data_dir)
-    full_ds = datasets.ImageFolder(str(data_dir), transform=None)
-    n = len(full_ds)
+    
+    # Load original dataset without transforms
+    original_dataset = datasets.ImageFolder(str(data_dir), transform=None)
+    
+    # Create mapping from original labels to new labels
+    class_mapping = {}
+    new_idx = 0
+    new_classes = []
+    seen_classes = set()
+    
+    for old_idx, class_name in enumerate(original_dataset.classes):
+        normalized = normalize_class_name(class_name)
+        if normalized is not None:  # Keep only valid classes
+            if normalized not in seen_classes:
+                seen_classes.add(normalized)
+                new_classes.append(normalized)
+            class_mapping[old_idx] = new_classes.index(normalized)
+    
+    print(f"Original classes: {len(original_dataset.classes)}")
+    print(f"Filtered classes: {len(new_classes)}")
+    
+    # Create filtered dataset
+    filtered_dataset = FilteredDataset(original_dataset, class_mapping)
+    
+    # Split into train and validation
+    n = len(filtered_dataset)
     n_val = int(n * val_ratio)
     n_train = n - n_val
-    train_sub, val_sub = random_split(
-        full_ds, [n_train, n_val], generator=torch.Generator().manual_seed(seed)
+    
+    train_dataset, val_dataset = random_split(
+        filtered_dataset, [n_train, n_val], 
+        generator=torch.Generator().manual_seed(seed)
     )
-
-    train_ds = _TransformSubset(train_sub, get_train_transform(image_size))
-    val_ds = _TransformSubset(val_sub, get_val_transform(image_size))
-
+    
+    # Apply transforms
+    train_dataset.dataset.transform = get_train_transform(image_size)
+    val_dataset.dataset.transform = get_val_transform(image_size)
+    
+    # Create data loaders
     pin = device is not None and device.type == "cuda"
     train_loader = DataLoader(
-        train_ds, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=pin
+        train_dataset, batch_size=batch_size, shuffle=True, 
+        num_workers=0, pin_memory=pin
     )
     val_loader = DataLoader(
-        val_ds, batch_size=batch_size, shuffle=False, num_workers=0
+        val_dataset, batch_size=batch_size, shuffle=False, num_workers=0
     )
-    return train_loader, val_loader, full_ds.classes
+    
+    return train_loader, val_loader, new_classes
 
 
 def build_test_loader(
     test_dir: Union[str, Path],
+    train_classes: List[str],
     batch_size: int = 32,
     image_size: int = 224
-) -> Tuple[Optional[DataLoader], Optional[list]]:
-    """Build a DataLoader for the official test set."""
+) -> Tuple[Optional[DataLoader], Optional[List[str]]]:
+    """Build a DataLoader for the official test set with alignment to training classes."""
     test_dir = Path(test_dir)
     if not test_dir.is_dir():
         return None, None
-    test_ds = datasets.ImageFolder(str(test_dir), transform=get_val_transform(image_size))
-    return DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=0), test_ds.classes
+    
+    # Load test dataset
+    original_test_dataset = datasets.ImageFolder(str(test_dir), transform=None)
+    
+    # Create mapping from test class names to training class indices
+    train_name_to_idx = {name: idx for idx, name in enumerate(train_classes)}
+    class_mapping = {}
+    
+    for old_idx, class_name in enumerate(original_test_dataset.classes):
+        normalized = normalize_class_name(class_name)
+        if normalized in train_name_to_idx:
+            class_mapping[old_idx] = train_name_to_idx[normalized]
+    
+    if not class_mapping:
+        print(f"Warning: No matching classes found between test and train")
+        print(f"Test classes: {original_test_dataset.classes}")
+        print(f"Train classes: {train_classes}")
+        return None, None
+    
+    # Create filtered test dataset with transforms
+    filtered_test_dataset = FilteredDataset(
+        original_test_dataset, 
+        class_mapping,
+        transform=get_val_transform(image_size)
+    )
+    
+    test_loader = DataLoader(
+        filtered_test_dataset, 
+        batch_size=batch_size, 
+        shuffle=False, 
+        num_workers=0
+    )
+    
+    return test_loader, train_classes
 
 
 # -----------------------------------------------------------------------------
@@ -336,17 +433,7 @@ def load_model_from_checkpoint(
     *,
     map_location: Optional[Union[str, torch.device]] = None,
 ) -> Tuple[nn.Module, dict]:
-    """Load `best_model.pt` and rebuild the correct architecture.
-
-    Checkpoints from older runs without `arch` default to `small_cnn`.
-
-    Args:
-        path: Path to the checkpoint file
-        map_location: Device to map the model to
-
-    Returns:
-        Tuple of (model, checkpoint_dict)
-    """
+    """Load `best_model.pt` and rebuild the correct architecture."""
     path = Path(path)
     ckpt = torch.load(path, map_location=map_location, weights_only=True)
     class_names = ckpt["class_names"]
@@ -391,8 +478,8 @@ def evaluate(
     model: nn.Module,
     loader: DataLoader,
     device: torch.device,
-    class_names: list
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, list]:
+    class_names: List[str]
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Evaluate model on a dataset."""
     model.eval()
     all_preds = []
@@ -410,21 +497,19 @@ def evaluate(
     y_true = np.concatenate(all_labels)
     y_pred = np.concatenate(all_preds)
     y_probs = np.concatenate(all_probs)
-    return y_true, y_pred, y_probs, class_names
+    return y_true, y_pred, y_probs
 
 
 def print_metrics(
     y_true: np.ndarray,
     y_pred: np.ndarray,
     y_probs: np.ndarray,
-    class_names: list
+    class_names: List[str]
 ) -> Optional[dict]:
     """Print detailed classification metrics with explanations."""
     n_classes = len(class_names)
 
     # ----- (1) ACCURACY -----
-    # What it means: Of all samples, what fraction did we get right?
-    # Formula: correct_predictions / total_predictions
     acc = accuracy_score(y_true, y_pred)
     print("\n" + "=" * 60)
     print("1. ACCURACY")
@@ -435,9 +520,6 @@ def print_metrics(
     print()
 
     # ----- (2) PRECISION, RECALL, F1 (per class) -----
-    # Precision: Of all we predicted as class X, how many were really X? (avoids false alarms)
-    # Recall:    Of all true X, how many did we find? (avoids missing real X)
-    # F1:        Harmonic mean of precision and recall (single balance score per class)
     precision, recall, f1, support = precision_recall_fscore_support(
         y_true, y_pred, labels=range(n_classes), average=None, zero_division=0
     )
@@ -452,7 +534,7 @@ def print_metrics(
     for i, name in enumerate(class_names):
         print(f"  {name}:")
         print(f"    Precision = {precision[i]:.4f}   Recall = {recall[i]:.4f}   F1 = {f1[i]:.4f}   (n = {support[i]})")
-    # Macro average (treat each class equally)
+    
     p_macro, r_macro, f_macro, _ = precision_recall_fscore_support(
         y_true, y_pred, labels=range(n_classes), average="macro", zero_division=0
     )
@@ -460,7 +542,6 @@ def print_metrics(
     print()
 
     # ----- (3) CONFUSION MATRIX -----
-    # Rows = true class, Cols = predicted class. Entry (i,j) = count of true i predicted as j.
     cm = confusion_matrix(y_true, y_pred, labels=range(n_classes))
     print("3. CONFUSION MATRIX")
     print("=" * 60)
@@ -477,9 +558,7 @@ def print_metrics(
     print()
 
     # ----- (4) ROC-AUC -----
-    # Only valid for binary; for multi-class we use one-vs-rest or one-vs-one.
     if n_classes == 2:
-        # Binary: use probability of positive class
         auc = roc_auc_score(y_true, y_probs[:, 1])
         fpr, tpr, _ = roc_curve(y_true, y_probs[:, 1])
         print("4. ROC-AUC (binary)")
@@ -490,7 +569,6 @@ def print_metrics(
         print(f"AUC = {auc:.4f}")
         return {"fpr": fpr, "tpr": tpr, "auc": auc}
     else:
-        # Multi-class: one-vs-rest AUC (macro)
         try:
             auc = roc_auc_score(y_true, y_probs, multi_class="ovr", average="macro")
             print("4. ROC-AUC (multi-class, one-vs-rest macro)")
@@ -561,27 +639,30 @@ def main() -> None:
 
     print(f"Using data directory: {data_dir}")
     train_loader, val_loader, class_names = build_dataloaders(data_dir, device=device)
-    print(f"Classes: {class_names}")
+    print(f"\nFinal classes for training ({len(class_names)} classes):")
+    for i, c in enumerate(class_names):
+        print(f"  {i}: {c}")
 
-    # Official test set - check multiple common locations
+    # Official test set
     possible_test_dirs = [
-        data_path / "test",           # data/test
-        data_path / "Test",           # data/Test (capitalized)
-        data_dir / "test",            # data/train/test (unlikely but check)
-        data_dir / "Test",            # data/train/Test
-        data_dir.parent / "test",     # data/test when data_dir is data/train
-        data_dir.parent / "Test",     # data/Test when data_dir is data/train
+        data_path / "test",
+        data_path / "Test",
+        data_dir / "test",
+        data_dir / "Test",
+        data_dir.parent / "test",
+        data_dir.parent / "Test",
     ]
 
     test_loader, test_class_names = None, None
     for test_dir in possible_test_dirs:
-        test_loader, test_class_names = build_test_loader(test_dir)
+        test_loader, test_class_names = build_test_loader(test_dir, class_names)
         if test_loader is not None:
-            print(f"Test set found: {test_dir} ({len(test_loader.dataset)} images)")
+            print(f"\nTest set found: {test_dir} ({len(test_loader.dataset)} images)")
+            print(f"Test set aligned with training classes ({len(test_class_names)} classes)")
             break
 
     if test_loader is None:
-        print("No official test set found; reporting validation metrics only.")
+        print("\nNo official test set found; reporting validation metrics only.")
         print("  (This dataset may not have a separate test folder - using validation split instead)")
 
     num_classes = len(class_names)
@@ -599,7 +680,7 @@ def main() -> None:
         loss = train_epoch(model, train_loader, criterion, optimizer, device)
         scheduler.step()
         # Validation accuracy for checkpointing
-        y_true_v, y_pred_v, _, _ = evaluate(model, val_loader, device, class_names)
+        y_true_v, y_pred_v, _ = evaluate(model, val_loader, device, class_names)
         val_acc = float(accuracy_score(y_true_v, y_pred_v))
         lr = optimizer.param_groups[0]["lr"]
         if val_acc > best_val_acc:
@@ -615,30 +696,30 @@ def main() -> None:
         else:
             print(f"Epoch {epoch}/{num_epochs}  train_loss = {loss:.4f}  val_acc = {val_acc:.4f}  lr = {lr:.6f}")
 
-    print(f"Best validation accuracy: {best_val_acc:.4f}  (checkpoint: {checkpoint_path})")
+    print(f"\nBest validation accuracy: {best_val_acc:.4f}  (checkpoint: {checkpoint_path})")
 
-    # Load best checkpoint so reported metrics match the saved model
+    # Load best checkpoint
     ckpt = torch.load(checkpoint_path, weights_only=True)
     arch = ckpt.get("arch", "small_cnn")
     model = build_model(arch, num_classes, pretrained=False).to(device)
     model.load_state_dict(ckpt["model_state_dict"])
     print(f"Loaded best checkpoint (epoch {ckpt['epoch']}, arch={arch}) for evaluation.")
 
-    # Validation set metrics (using best checkpoint)
+    # Validation set metrics
     print("\n" + "=" * 60)
     print("VALIDATION SET (20% holdout from train) - best checkpoint")
     print("=" * 60)
-    y_true, y_pred, y_probs, _ = evaluate(model, val_loader, device, class_names)
+    y_true, y_pred, y_probs = evaluate(model, val_loader, device, class_names)
     roc_data = print_metrics(y_true, y_pred, y_probs, class_names)
     if roc_data:
         plot_roc(roc_data["fpr"], roc_data["tpr"], roc_data["auc"], save_path="roc_curve_val.png")
 
-    # Official test set metrics (unbiased estimate, best checkpoint)
+    # Official test set metrics
     if test_loader is not None:
         print("\n" + "=" * 60)
         print("TEST SET (official held-out split) - best checkpoint")
         print("=" * 60)
-        y_true_t, y_pred_t, y_probs_t, _ = evaluate(model, test_loader, device, test_class_names)
+        y_true_t, y_pred_t, y_probs_t = evaluate(model, test_loader, device, test_class_names)
         print_metrics(y_true_t, y_pred_t, y_probs_t, test_class_names)
 
     print("\nDone.")
