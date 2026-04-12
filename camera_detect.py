@@ -341,35 +341,62 @@ class LiveClassifier:
     def _normalize_freshness_class(self, raw_class: str, probs: np.ndarray) -> Tuple[str, str]:
         """
         Normalize class name to Fresh/Rotten regardless of produce type.
-        Also extracts the produce type (Apple, Tomato, Banana, etc.) from the class name.
-        Handles formats like: 'Apple_Fresh', 'fresh_apple', 'Fresh', 'Rotten Banana', etc.
+        Also extracts the produce type (Apple, Tomato, Banana, Potato, etc.) from the class name.
+        Handles formats like: 'freshpotato', 'freshtomato', 'rottenapples', etc.
 
         Returns: (freshness_status, produce_type)
         """
         raw_lower = raw_class.lower()
         produce_type = "Unknown"
 
-        # Extract produce type from class name patterns like "Apple_Fresh", "Tomato_Rotten"
-        # Common produce types we're looking for
-        known_produce = ["potato", "apple", "tomato", "orange", "banana", "okra", "cucumber"]
+        # Direct mapping from your actual class names to display names
+        produce_mapping = {
+            # Fresh produce
+            "freshapples": "Apple",
+            "freshapple": "Apple",
+            "freshbanana": "Banana",
+            "freshcucumber": "Cucumber",
+            "freshokra": "Okra",
+            "freshoranges": "Orange",
+            "freshorange": "Orange",
+            "freshpotato": "Potato",
+            "freshtomato": "Tomato",
+            
+            # Rotten produce
+            "rottenapples": "Apple",
+            "rottenapple": "Apple",
+            "rottenbanana": "Banana",
+            "rottencucumber": "Cucumber",
+            "rottenokra": "Okra",
+            "rottenoranges": "Orange",
+            "rottenorange": "Orange",
+            "rottenpotato": "Potato",
+            "rottentomato": "Tomato",
+        }
 
-        for produce in known_produce:
-            if produce in raw_lower:
-                produce_type = produce.capitalize()
-                break
+        # Check if the raw class exactly matches any of our mappings
+        if raw_lower in produce_mapping:
+            produce_type = produce_mapping[raw_lower]
+        else:
+            # Try to extract produce type by checking for known patterns
+            known_produce = ["apple", "banana", "cucumber", "okra", "orange", "potato", "tomato"]
+            
+            for produce in known_produce:
+                if produce in raw_lower:
+                    produce_type = produce.capitalize()
+                    break
+            
+            # If still unknown, try to extract by removing freshness prefix/suffix
+            if produce_type == "Unknown":
+                # Remove common freshness words
+                cleaned = raw_lower.replace("fresh", "").replace("rotten", "").replace("stale", "")
+                if cleaned:
+                    # Remove trailing 's' if present (apples -> apple)
+                    if cleaned.endswith('s'):
+                        cleaned = cleaned[:-1]
+                    produce_type = cleaned.capitalize()
 
-        # If no known produce found, try to extract from before _fresh or _rotten
-        if produce_type == "Unknown" and "_" in raw_class:
-            # Pattern like "Apple_Fresh" or "Tomato_Rotten"
-            parts = raw_class.lower().split("_")
-            if len(parts) >= 2:
-                # The produce type is usually the first part
-                candidate = parts[0].capitalize()
-                # Exclude freshness indicators
-                if candidate.lower() not in ["fresh", "rotten", "stale", "spoiled"]:
-                    produce_type = candidate
-
-        # Check if this is a freshness-based class name
+        # Determine freshness status
         has_fresh = "fresh" in raw_lower
         has_rotten = any(word in raw_lower for word in ["rotten", "stale", "spoiled", "bad"])
 
@@ -378,11 +405,10 @@ class LiveClassifier:
         elif has_rotten and not has_fresh:
             return "Rotten", produce_type
         elif has_fresh and has_rotten:
-            # Ambiguous - check confidence to decide
+            # Ambiguous - return cleaned raw class
             return raw_class.replace("_", " ").title(), produce_type
 
-        # For datasets with binary classes, assume class 0 is fresh, 1 is rotten
-        # or use the class with higher probability
+        # For binary classification (fallback)
         if len(self.class_names) == 2:
             # Binary classification - check which index has "fresh" vs "rotten"
             fresh_idx = -1
@@ -400,7 +426,6 @@ class LiveClassifier:
 
         # Default: return cleaned up raw class
         return raw_class.replace("_", " ").title(), produce_type
-
 
 # ------------------------------------------------------------------------------
 # MAIN
