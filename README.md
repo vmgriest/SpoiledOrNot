@@ -264,7 +264,7 @@ FC(128→64) → ReLU → Dropout → FC(64→classes)
 
 **Contents:**
 - ~5,000 labeled images
-- Categories: Apples, Bananas, Oranges
+- Categories: Apples, Bananas, Oranges, etc.
 - Labels: Fresh, Rotten
 - Variations in lighting, angle, and background
 
