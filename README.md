@@ -9,15 +9,15 @@ Demo: https://youtu.be/sikMSuCsDZ8
 
 ## 📋 Table of Contents
 
-- [Features](#features)
-- [Demo](#demo)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Project Structure](#project-structure)
-- [Model Architecture](#model-architecture)
-- [Results](#results)
-- [Dataset](#dataset)
-- [Future Work](#future-work)
+- [Features]
+- [Demo]
+- [Installation]
+- [Usage]
+- [Project Structure]
+- [Model Architecture]
+- [Results]
+- [Dataset]
+- [Future Work]
   
 ## ✨ Features
 
