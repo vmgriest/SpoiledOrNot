@@ -287,19 +287,6 @@ FC(128→64) → ReLU → Dropout → FC(64→classes)
 5. **Smart Integration:** IoT refrigerator and inventory system integration
 6. **Edge Optimization:** Quantization for Raspberry Pi deployment
 
-## 📚 Citations
-
-If you use this project in your research, please cite:
-
-```bibtex
-@misc{spoiledornot2024,
-  title={SpoiledOrNot: Real-Time Produce Freshness Detection},
-  author={[Your Name]},
-  year={2024},
-  publisher={GitHub},
-  howpublished={\url{https://github.com/[your-username]/SpoiledOrNot}}
-}
-```
 
 ### References
 
