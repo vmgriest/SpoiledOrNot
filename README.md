@@ -18,8 +18,7 @@ Demo: https://youtu.be/sikMSuCsDZ8
 - [Results](#results)
 - [Dataset](#dataset)
 - [Future Work](#future-work)
-- [Citations](#citations)
-
+  
 ## ✨ Features
 
 - **Real-Time Classification:** Webcam and IP camera support with 15-30 FPS performance
