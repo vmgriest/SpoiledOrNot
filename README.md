@@ -9,15 +9,15 @@ Demo: https://youtu.be/sikMSuCsDZ8
 
 ## 📋 Table of Contents
 
-- [Features]
-- [Demo]
-- [Installation]
-- [Usage]
-- [Project Structure]
-- [Model Architecture]
-- [Results]
-- [Dataset]
-- [Future Work]
+- Features
+- Demo
+- Installation
+- Usage
+- Project Structure
+- Model Architecture
+- Results
+- Dataset
+- Future Work
   
 ## ✨ Features
 
@@ -239,7 +239,7 @@ FC(128→64) → ReLU → Dropout → FC(64→classes)
 | Macro F1-Score | 0.940 |
 | ROC-AUC | 0.978 |
 
-### Per-Class Performance
+### Some Per-Class Performance
 
 | Class | Precision | Recall | F1-Score |
 |-------|-----------|--------|----------|
