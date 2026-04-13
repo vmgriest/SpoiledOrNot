@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SpoiledOrNot - Fruit Freshness Detector</title>
+    <title>SpoiledOrNot - Fruit Freshness Detector with Gemma 4 AI</title>
     <style>
         * {
             margin: 0;
@@ -19,7 +19,7 @@
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
             padding: 20px;
         }
@@ -43,6 +43,23 @@
         header p {
             color: #a0a0a0;
             font-size: 1.1rem;
+        }
+
+        .gemma-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            margin-top: 15px;
+        }
+
+        .gemma-badge.not-available {
+            background: linear-gradient(135deg, #555 0%, #444 100%);
+            opacity: 0.7;
         }
 
         .grid {
@@ -176,7 +193,22 @@
             background: rgba(255, 255, 255, 0.2);
         }
 
-        /* Apply button - more prominent when active */
+        .btn-ai {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+        }
+
+        .btn-ai:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-ai:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         .btn-apply {
             background: rgba(46, 204, 113, 0.12);
             color: #fff;
@@ -208,7 +240,6 @@
             animation: none !important;
         }
 
-        /* Settings changed indicator */
         .settings-changed-hint {
             font-size: 0.8rem;
             color: #f39c12;
@@ -267,6 +298,121 @@
 
         .result-display.spoiled .confidence {
             color: #e74c3c;
+        }
+
+        .produce-type {
+            font-size: 1rem;
+            color: #f39c12;
+            margin-bottom: 5px;
+        }
+
+        /* Gemma Analysis Panel */
+        .gemma-panel {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            display: none;
+        }
+
+        .gemma-panel.visible {
+            display: block;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .gemma-panel h3 {
+            font-size: 1.1rem;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #a78bfa;
+        }
+
+        .gemma-panel .analysis-text {
+            line-height: 1.6;
+            color: #e0e0e0;
+            font-size: 0.95rem;
+        }
+
+        .gemma-panel .analysis-loading {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            color: #a0a0a0;
+        }
+
+        .gemma-panel .loading-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .gemma-panel .loading-progress {
+            width: 100%;
+        }
+
+        .gemma-panel .progress-bar-gemma {
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+
+        .gemma-panel .progress-bar-gemma .fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 3px;
+            transition: width 0.5s ease;
+        }
+
+        .gemma-panel .loading-status {
+            font-size: 0.85rem;
+            color: #888;
+            margin-top: 8px;
+            font-style: italic;
+        }
+
+        .gemma-panel .loading-time {
+            font-size: 0.75rem;
+            color: #666;
+            margin-top: 4px;
+        }
+
+        .gemma-panel .analysis-error {
+            color: #ff6b6b;
+            background: rgba(255, 107, 107, 0.1);
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 107, 107, 0.3);
+        }
+
+        .gemma-panel .analysis-error h4 {
+            margin-bottom: 8px;
+            color: #ff6b6b;
+        }
+
+        .gemma-panel .analysis-error .error-hint {
+            font-size: 0.85rem;
+            color: #aaa;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255, 107, 107, 0.2);
+        }
+
+        .gemma-panel .analysis-error code {
+            background: rgba(0,0,0,0.3);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+            color: #ddd;
         }
 
         /* Training Section */
@@ -368,13 +514,57 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+
+        /* Multi-modal info section */
+        .info-section {
+            margin-top: 30px;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .info-section h3 {
+            margin-bottom: 15px;
+            color: #2ecc71;
+        }
+
+        .info-section ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .info-section li {
+            padding: 8px 0;
+            padding-left: 25px;
+            position: relative;
+            color: #a0a0a0;
+        }
+
+        .info-section li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #2ecc71;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
             <h1>SpoiledOrNot</h1>
-            <p>Real-time Produce Freshness Detection with AI</p>
+            <p>Real-time Produce Freshness Detection with Multi-Modal AI</p>
+            {% if gemma_ready %}
+            <div class="gemma-badge">
+                <span>🤖</span>
+                <span>Gemma 4 AI Ready</span>
+            </div>
+            {% else %}
+            <div class="gemma-badge not-available">
+                <span>⚠️</span>
+                <span>Gemma 4 Not Available</span>
+            </div>
+            {% endif %}
         </header>
 
         <div class="grid">
@@ -391,9 +581,41 @@
                 </div>
 
                 <div class="result-display waiting" id="resultDisplay">
-                    <div class="produce-type" id="produceType" style="font-size: 1rem; color: #f39c12; margin-bottom: 5px;"></div>
+                    <div class="produce-type" id="produceType"></div>
                     <div class="status">Waiting for camera...</div>
                     <div class="confidence">--</div>
+                </div>
+
+                <!-- Gemma 4 Analysis Panel -->
+                <div class="gemma-panel" id="gemmaPanel">
+                    <h3><span>🤖</span> Gemma 4 AI Analysis</h3>
+                    <div id="gemmaContent">
+                        <div class="analysis-loading" id="gemmaLoading">
+                            <div class="loading-header">
+                                <div class="spinner"></div>
+                                <span id="gemmaLoadingText">Analyzing produce with multi-modal AI...</span>
+                            </div>
+                            <div class="loading-progress">
+                                <div class="progress-bar-gemma">
+                                    <div class="fill" id="gemmaProgressBar" style="width: 0%"></div>
+                                </div>
+                                <div class="loading-status" id="gemmaStatusText">Connecting to Ollama...</div>
+                                <div class="loading-time" id="gemmaTimeText">This may take 10-30 seconds on first run</div>
+                            </div>
+                        </div>
+                        <div class="analysis-text" id="gemmaAnalysis" style="display: none;"></div>
+                        <div class="analysis-error" id="gemmaError" style="display: none;">
+                            <h4>⚠️ Analysis Failed</h4>
+                            <div id="gemmaErrorText"></div>
+                            <div class="error-hint">
+                                <strong>Troubleshooting:</strong><br>
+                                • Make sure Ollama is running: <code>ollama serve</code><br>
+                                • First request loads the model (can take 30-60s)<br>
+                                • Try again - subsequent requests are faster<br>
+                                • Check available models: <code>ollama list</code>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="camera-controls">
@@ -431,7 +653,6 @@
                         </div>
                     </div>
 
-                    <!-- Settings changed hint -->
                     <div class="settings-changed-hint" id="settingsHint">
                         ⚠️ Settings changed — click Apply to update the stream
                     </div>
@@ -444,6 +665,16 @@
                             <span>🔄</span> Apply Settings
                         </button>
                     </div>
+
+                    {% if gemma_ready %}
+                    <button class="btn btn-ai" id="gemmaBtn" onclick="requestGemmaAnalysis()" disabled>
+                        <span>🤖</span> Get AI Analysis
+                    </button>
+                    {% else %}
+                    <button class="btn btn-ai" disabled>
+                        <span>⚠️</span> Gemma 4 Not Available
+                    </button>
+                    {% endif %}
                 </div>
             </div>
 
@@ -507,8 +738,23 @@
             </div>
         </div>
 
+        <!-- Multi-Modal Info Section -->
+        <div class="info-section">
+            <h3>🎯 How It Works: Multi-Modal AI</h3>
+            <ul>
+                <li><strong>CV Model (ResNet-18):</strong> Classifies produce freshness in real-time using computer vision</li>
+                <li><strong>Object Detection (Faster R-CNN):</strong> Locates produce in the frame for accurate classification</li>
+                <li><strong>Gemma 4 LLM:</strong> Provides natural language analysis with storage recommendations and safety assessment</li>
+                <li><strong>Multi-Modal Fusion:</strong> CV results feed into the LLM prompt for context-aware AI analysis</li>
+            </ul>
+            <p style="margin-top: 15px; color: #888; font-size: 0.9rem;">
+                The system combines a traditional computer vision pipeline with a large language model to give you both
+                fast classification and detailed, expert-level insights about your produce.
+            </p>
+        </div>
+
         <footer>
-            <p>SpoiledOrNot - Built with PyTorch & Flask</p>
+            <p>SpoiledOrNot - Built with PyTorch, Flask & Gemma 4</p>
         </footer>
     </div>
 
@@ -517,9 +763,8 @@
         let trainingPolling = null;
         let resultPolling = null;
         let settingsChanged = false;
-
-        // Track the settings that are currently active on the stream
         let activeSettings = null;
+        let gemmaAnalysisRequested = false;
 
         // Camera source toggle
         document.getElementById("cameraSource").addEventListener("change", function() {
@@ -527,7 +772,6 @@
             droidcamUrl.style.display = this.value === "droidcam" ? "block" : "none";
         });
 
-        // Called whenever any setting input changes
         function onSettingChange() {
             if (!cameraRunning) return;
             settingsChanged = true;
@@ -537,7 +781,6 @@
             hint.classList.add("visible");
         }
 
-        // Build stream URL from current settings
         function buildStreamUrl() {
             const source = document.getElementById("cameraSource").value;
             const rotation = parseInt(document.getElementById("rotation").value) || 0;
@@ -556,14 +799,9 @@
                 params.push("camera=0");
             }
 
-            // Pass target output dimensions and rotation to backend.
-            // The backend should: rotate first, then resize to (width x height).
-            // This means width/height are the FINAL displayed size regardless of rotation.
             params.push("width=" + width);
             params.push("height=" + height);
             params.push("rotate=" + rotation);
-
-            // Cache buster forces browser to re-request the stream
             params.push("_=" + Date.now());
 
             const fullUrl = streamUrl + "?" + params.join("&");
@@ -571,25 +809,22 @@
             return fullUrl;
         }
 
-        // Update container aspect ratio to match target output dimensions
         function updateContainerAspectRatio() {
             const width = parseInt(document.getElementById("frameWidth").value) || 640;
             const height = parseInt(document.getElementById("frameHeight").value) || 480;
             const container = document.getElementById("cameraContainer");
-            // width/height are already the post-rotation output dimensions the backend sends back
             container.style.aspectRatio = width + "/" + height;
             console.log("[updateContainerAspectRatio] Set to:", width + "/" + height);
         }
 
-        // Toggle camera on/off
         async function toggleCamera() {
             const btn = document.getElementById("toggleCamera");
             const feed = document.getElementById("cameraFeed");
             const placeholder = document.getElementById("cameraPlaceholder");
             const applyBtn = document.getElementById("applySettings");
+            const gemmaBtn = document.getElementById("gemmaBtn");
 
             if (cameraRunning) {
-                // Stop camera
                 cameraRunning = false;
                 feed.style.display = "none";
                 placeholder.style.display = "flex";
@@ -597,8 +832,11 @@
                 applyBtn.disabled = true;
                 applyBtn.classList.remove("has-changes");
                 document.getElementById("settingsHint").classList.remove("visible");
+                if (gemmaBtn) gemmaBtn.disabled = true;
                 settingsChanged = false;
                 activeSettings = null;
+
+                document.getElementById("gemmaPanel").classList.remove("visible");
 
                 if (resultPolling) {
                     clearInterval(resultPolling);
@@ -606,10 +844,8 @@
                 }
                 updateResultDisplay({ class_name: null, confidence: 0, fruit_found: false });
 
-                // Reload page to stop stream
                 window.location.reload();
             } else {
-                // Validate before starting
                 const source = document.getElementById("cameraSource").value;
                 if (source === "droidcam") {
                     const ip = document.getElementById("ipCamera").value.trim();
@@ -629,7 +865,6 @@
                 feed.style.display = "block";
                 placeholder.style.display = "none";
 
-                // Save the settings that are now active on the stream
                 activeSettings = getCurrentSettings();
 
                 feed.onload = function() {
@@ -637,6 +872,7 @@
                     btn.innerHTML = "<span>⏹️</span> Stop Camera";
                     cameraRunning = true;
                     applyBtn.disabled = false;
+                    if (gemmaBtn) gemmaBtn.disabled = false;
                     settingsChanged = false;
                     startResultPolling();
                 };
@@ -651,7 +887,6 @@
             }
         }
 
-        // Capture current settings snapshot for comparison
         function getCurrentSettings() {
             return {
                 source: document.getElementById("cameraSource").value,
@@ -662,7 +897,6 @@
             };
         }
 
-        // Apply settings to the running stream without full page reload
         async function applySettings() {
             if (!cameraRunning) return;
 
@@ -681,15 +915,11 @@
             const originalHTML = btn.innerHTML;
             btn.innerHTML = '<div class="spinner"></div> Applying...';
 
-            // Update the container aspect ratio first so the UI doesn"t flash
             updateContainerAspectRatio();
 
             const feed = document.getElementById("cameraFeed");
-
-            // Clear src first to properly close the old MJPEG stream connection
             feed.src = "";
 
-            // Small delay to let the browser release the old stream
             await new Promise(resolve => setTimeout(resolve, 250));
 
             const newUrl = buildStreamUrl();
@@ -707,7 +937,6 @@
                 settingsChanged = false;
                 activeSettings = getCurrentSettings();
 
-                // Reset button label after a moment
                 setTimeout(() => {
                     btn.innerHTML = "<span>🔄</span> Apply Settings";
                 }, 1500);
@@ -724,14 +953,129 @@
             feed.onload = onSuccess;
             feed.onerror = onError;
 
-            // Fallback timeout — MJPEG streams sometimes don"t fire onload reliably
             timeoutId = setTimeout(() => {
                 console.warn("[applySettings] onload timed out, assuming success");
                 onSuccess();
             }, 8000);
         }
 
-        // Poll for classification results
+        let gemmaAnalysisStartTime = null;
+        let gemmaPollingInterval = null;
+
+        async function requestGemmaAnalysis() {
+            const gemmaPanel = document.getElementById("gemmaPanel");
+            const gemmaLoading = document.getElementById("gemmaLoading");
+            const gemmaAnalysis = document.getElementById("gemmaAnalysis");
+            const gemmaError = document.getElementById("gemmaError");
+            const btn = document.getElementById("gemmaBtn");
+
+            if (!cameraRunning) {
+                alert("Please start the camera first!");
+                return;
+            }
+
+            // Reset and show panel
+            gemmaPanel.classList.add("visible");
+            gemmaLoading.style.display = "flex";
+            gemmaAnalysis.style.display = "none";
+            gemmaError.style.display = "none";
+            btn.disabled = true;
+
+            gemmaAnalysisStartTime = Date.now();
+            updateGemmaTimeText();
+
+            // Start elapsed time updater
+            const timeUpdater = setInterval(updateGemmaTimeText, 1000);
+
+            // Simulate progress while waiting
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                if (progress < 90) {
+                    progress += Math.random() * 5;
+                    if (progress > 90) progress = 90;
+                    updateGemmaProgress(progress);
+                }
+            }, 1000);
+
+            // Update status messages based on elapsed time
+            const statusMessages = [
+                { time: 0, text: "Connecting to Ollama..." },
+                { time: 3, text: "Sending image to Gemma 4..." },
+                { time: 8, text: "Gemma 4 is analyzing the image..." },
+                { time: 15, text: "Processing multi-modal data..." },
+                { time: 25, text: "Generating recommendations..." },
+                { time: 35, text: "Almost done... (Gemma 4 is still working)" },
+            ];
+
+            let messageIndex = 0;
+            const messageInterval = setInterval(() => {
+                const elapsed = (Date.now() - gemmaAnalysisStartTime) / 1000;
+                while (messageIndex < statusMessages.length - 1 &&
+                       elapsed >= statusMessages[messageIndex + 1].time) {
+                    messageIndex++;
+                }
+                document.getElementById("gemmaStatusText").textContent = statusMessages[messageIndex].text;
+            }, 1000);
+
+            try {
+                const response = await fetch("/api/gemma_analyze", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" }
+                });
+                const data = await response.json();
+
+                clearInterval(timeUpdater);
+                clearInterval(progressInterval);
+                clearInterval(messageInterval);
+
+                gemmaLoading.style.display = "none";
+
+                if (data.success) {
+                    gemmaAnalysis.innerHTML = data.analysis;
+                    gemmaAnalysis.style.display = "block";
+                } else {
+                    document.getElementById("gemmaErrorText").textContent =
+                        data.error || "Unknown error occurred";
+                    gemmaError.style.display = "block";
+                }
+            } catch (e) {
+                clearInterval(timeUpdater);
+                clearInterval(progressInterval);
+                clearInterval(messageInterval);
+
+                gemmaLoading.style.display = "none";
+                document.getElementById("gemmaErrorText").textContent =
+                    "Network error: " + e.message;
+                gemmaError.style.display = "block";
+            } finally {
+                btn.disabled = false;
+                updateGemmaProgress(100);
+            }
+        }
+
+        function updateGemmaProgress(percent) {
+            const bar = document.getElementById("gemmaProgressBar");
+            if (bar) {
+                bar.style.width = Math.min(percent, 100) + "%";
+            }
+        }
+
+        function updateGemmaTimeText() {
+            const elapsed = Math.floor((Date.now() - gemmaAnalysisStartTime) / 1000);
+            const text = document.getElementById("gemmaTimeText");
+            if (text) {
+                if (elapsed < 5) {
+                    text.textContent = "This may take 10-30 seconds on first run";
+                } else if (elapsed < 15) {
+                    text.textContent = `Loading... (${elapsed}s) - First run takes longer`;
+                } else if (elapsed < 30) {
+                    text.textContent = `Still working... (${elapsed}s) - Gemma 4 is processing`;
+                } else {
+                    text.textContent = `Taking longer than expected (${elapsed}s) - May be loading model`;
+                }
+            }
+        }
+
         function startResultPolling() {
             resultPolling = setInterval(async () => {
                 try {
@@ -744,7 +1088,6 @@
             }, 500);
         }
 
-        // Update result display
         function updateResultDisplay(result) {
             const display = document.getElementById("resultDisplay");
             const status = display.querySelector(".status");
@@ -762,14 +1105,23 @@
                 const classLower = result.class_name.toLowerCase();
                 const isFresh = classLower.includes("fresh") || classLower === "fresh";
                 display.classList.add(isFresh ? "fresh" : "spoiled");
-                // Show produce type if available
+
                 if (result.produce_type && result.produce_type !== "Unknown") {
                     produceType.textContent = result.produce_type;
                 } else {
                     produceType.textContent = "";
                 }
+
                 status.textContent = result.class_name;
                 confidence.textContent = (result.confidence * 100).toFixed(1) + "%";
+
+                // Auto-show Gemma analysis if available
+                if (result.gemma_analysis && !gemmaAnalysisRequested) {
+                    const gemmaPanel = document.getElementById("gemmaPanel");
+                    const gemmaAnalysis = document.getElementById("gemmaAnalysis");
+                    gemmaPanel.classList.add("visible");
+                    gemmaAnalysis.innerHTML = `<div class="analysis-text">${result.gemma_analysis}</div>`;
+                }
             } else {
                 display.classList.add("waiting");
                 produceType.textContent = "";
@@ -778,7 +1130,6 @@
             }
         }
 
-        // Start training
         async function startTraining() {
             const btn = document.getElementById("trainBtn");
             const backbone = document.getElementById("backbone").value;
@@ -810,7 +1161,6 @@
             }
         }
 
-        // Poll training status
         function startTrainingPolling() {
             if (trainingPolling) clearInterval(trainingPolling);
 
@@ -831,7 +1181,6 @@
             }, 1000);
         }
 
-        // Update training UI
         function updateTrainingUI(status) {
             document.getElementById("statusText").textContent = status.message;
             document.getElementById("progressText").textContent =
@@ -843,11 +1192,10 @@
             document.getElementById("progressBar").style.width = progress + "%";
 
             if (status.best_val_acc > 0) {
-                document.getElementById("bestAccText").textContent = (status.best_val_acc * 100).toFixed(2) + "%";
+                document.getElementById("bestAccText").textContent = (status.best_acc * 100).toFixed(2) + "%";
             }
         }
 
-        // Show alert
         function showAlert(message, type) {
             const alert = document.getElementById("trainingAlert");
             const msg = document.getElementById("alertMessage");
@@ -860,7 +1208,6 @@
             }, 5000);
         }
 
-        // Load model
         async function loadModel() {
             try {
                 const response = await fetch("/api/load_model", { method: "POST" });
@@ -871,7 +1218,6 @@
             }
         }
 
-        // Initial training status check
         fetch("/api/training_status").then(r => r.json()).then(updateTrainingUI);
     </script>
 </body>

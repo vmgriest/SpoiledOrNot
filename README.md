@@ -3,7 +3,7 @@
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
 
-An AI-powered computer vision system that detects produce freshness in real-time using deep learning. Built with PyTorch and Flask, this project demonstrates transfer learning with ResNet-18 for binary classification (fresh vs. spoiled) across multiple produce categories.
+An AI-powered computer vision system that detects produce freshness in real-time using deep learning. Built with PyTorch and Flask, this project demonstrates transfer learning with ResNet-18 for binary classification (fresh vs. spoiled) across multiple produce categories. Now enhanced with **Gemma 4 multi-modal AI** via Ollama for natural language freshness analysis.
 
 Demo: https://youtu.be/sikMSuCsDZ8
 
@@ -22,11 +22,13 @@ Demo: https://youtu.be/sikMSuCsDZ8
 ## ✨ Features
 
 - **Real-Time Classification:** Webcam and IP camera support with 15-30 FPS performance
-- **Web Interface:** Flask-based responsive UI with live video streaming
+- **Gemma 4 AI Analysis:** Natural language freshness analysis powered by Gemma 4 via Ollama — visual inspection, storage recommendations, and safety assessment
+- **Web Interface:** Flask-based responsive UI with live video streaming and one-click AI analysis
 - **Mobile Support:** Camera rotation (0°, 90°, 180°, 270°) for phone cameras via DroidCam
 - **High Accuracy:** 94%+ validation accuracy using transfer learning
 - **Produce Detection:** Automatic produce region detection using Faster R-CNN
-- **Training Pipeline:** Complete training system with progress tracking
+- **Non-Blocking Inference:** Background classification thread keeps video feed smooth while the model runs
+- **Training Pipeline:** Complete training system with progress tracking and balanced class handling
 - **Comprehensive Metrics:** Accuracy, precision, recall, F1-score, and ROC-AUC analysis
 
 ## 🎥 Demo
@@ -41,6 +43,37 @@ http://localhost:5000
 python camera_detect.py --rotate 90 --interval 2.0
 ```
 
+## 🤖 Gemma 4 AI Integration
+
+SpoiledOrNot uses **Gemma 4** (26B parameter multi-modal model) running locally via [Ollama](https://ollama.com) to provide natural language produce analysis alongside the CV model classification.
+
+### What the AI analysis provides
+- Visual observations of freshness or spoilage signs
+- Specific storage and usage recommendations
+- Safety assessment (safe to eat / use soon / discard)
+
+### Setup
+
+1. **Install Ollama:** https://ollama.com/download
+
+2. **Pull the model:**
+   ```bash
+   ollama pull gemma4:26b
+   ```
+
+3. **Start Ollama** (runs automatically on most installs, or run manually):
+   ```bash
+   ollama serve
+   ```
+
+4. **Trigger analysis:**
+   - **Web interface:** click the **"🤖 Get AI Analysis"** button
+   - **CLI:** press **`G`** while the camera feed is open
+
+> The first request loads the model into memory and may take 20–60 seconds. Subsequent requests are faster.
+
+---
+
 ## 🛠️ Installation
 
 ### Prerequisites
@@ -48,6 +81,7 @@ python camera_detect.py --rotate 90 --interval 2.0
 - Python 3.10 or higher
 - Webcam or IP camera (DroidCam for mobile)
 - CUDA-capable GPU (optional, for faster training/inference)
+- [Ollama](https://ollama.com) (optional, for Gemma 4 AI analysis)
 
 ### Step 1: Clone Repository
 
@@ -90,6 +124,8 @@ pip install -r requirements.txt
 - numpy ≥ 1.24.0
 - matplotlib ≥ 3.7.0
 - scikit-learn ≥ 1.3.0
+- requests (for Ollama/Gemma 4 API calls)
+- kagglehub (for dataset download)
 
 ## 🚀 Usage
 
@@ -104,11 +140,13 @@ python app.py
 Then open your browser to: **http://localhost:5000**
 
 **Features:**
-- Live camera feed with classification overlay
+- Live camera feed with real-time classification overlay
 - Camera source selection (webcam or DroidCam IP)
 - Rotation controls for mobile cameras
+- One-click Gemma 4 AI analysis with natural language results
 - Training interface with progress tracking
 - Real-time confidence scores
+- Gemma 4 availability badge (auto-detected on startup)
 
 ### Option 2: Command Line Interface
 
@@ -130,6 +168,7 @@ python camera_detect.py --width 640 --height 480 --interval 2.0 --fps 15
 
 **Controls:**
 - `SPACE` - Freeze/unfreeze frame
+- `G` - Request Gemma 4 AI analysis of the current frame
 - `Q` or `ESC` - Quit
 
 **Arguments:**
@@ -224,8 +263,8 @@ FC(128→64) → ReLU → Dropout → FC(64→classes)
 **Faster R-CNN MobileNet-V3:**
 - COCO-trained object detector
 - Identifies produce regions before classification
-- Supported classes: Apple, Banana, Orange, Carrot
-- Confidence threshold: 0.5
+- Supported classes: Apple, Banana, Orange, Carrot, Potato, Tomato, Cucumber, Okra, and more
+- Confidence threshold: 0.4
 
 ## 📊 Results
 
@@ -285,6 +324,7 @@ FC(128→64) → ReLU → Dropout → FC(64→classes)
 4. **Shelf-Life Prediction:** Regression model for remaining freshness days
 5. **Smart Integration:** IoT refrigerator and inventory system integration
 6. **Edge Optimization:** Quantization for Raspberry Pi deployment
+7. **Smaller AI Model:** Support lighter Gemma variants (e.g. gemma:4b) for lower-end hardware
 
 
 ### References
