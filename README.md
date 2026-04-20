@@ -2,8 +2,11 @@
 
 [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
+[![Accuracy](https://img.shields.io/badge/Accuracy-99.75%25-brightgreen.svg)]()
 
-An AI-powered computer vision system that detects produce freshness in real-time using deep learning. Built with PyTorch and Flask, this project demonstrates transfer learning with ResNet-18 for binary classification (fresh vs. spoiled) across multiple produce categories. Now enhanced with **Gemma 4 multi-modal AI** via Ollama for natural language freshness analysis.
+An AI-powered computer vision system that detects produce freshness in real-time using deep learning. Built with PyTorch and Flask, this project demonstrates transfer learning with ResNet-18 for classification across **14 produce categories** (fresh and rotten varieties). Now enhanced with **Gemma 4 multi-modal AI** via Ollama for natural language freshness analysis.
+
+**Achieves 99.75% test accuracy and 0.9999 ROC-AUC on held-out test set (6,738 images).**
 
 Demo: https://youtu.be/sikMSuCsDZ8
 
@@ -18,14 +21,15 @@ Demo: https://youtu.be/sikMSuCsDZ8
 - Results
 - Dataset
 - Future Work
-  
+
 ## ✨ Features
 
 - **Real-Time Classification:** Webcam and IP camera support with 15-30 FPS performance
 - **Gemma 4 AI Analysis:** Natural language freshness analysis powered by Gemma 4 via Ollama — visual inspection, storage recommendations, and safety assessment
 - **Web Interface:** Flask-based responsive UI with live video streaming and one-click AI analysis
 - **Mobile Support:** Camera rotation (0°, 90°, 180°, 270°) for phone cameras via DroidCam
-- **High Accuracy:** 94%+ validation accuracy using transfer learning
+- **High Accuracy:** 99.75% test accuracy using transfer learning (ResNet-18)
+- **14 Produce Classes:** Fresh & rotten apples, bananas, cucumbers, okra, oranges, potatoes, tomatoes
 - **Produce Detection:** Automatic produce region detection using Faster R-CNN
 - **Non-Blocking Inference:** Background classification thread keeps video feed smooth while the model runs
 - **Training Pipeline:** Complete training system with progress tracking and balanced class handling
@@ -187,7 +191,7 @@ python camera_detect.py --width 640 --height 480 --interval 2.0 --fps 15
 Train a new model from scratch:
 
 ```bash
-# Default training (ResNet-18, 8 epochs)
+# Default training (ResNet-18, 12 epochs)
 python baseline.py
 
 # Small CNN architecture
@@ -199,7 +203,7 @@ python baseline.py --backbone resnet18 --no-pretrained
 
 **Training will:**
 1. Download dataset from Kaggle (if not present)
-2. Train with real-time progress display
+2. Train with real-time progress display (12 epochs)
 3. Save best model to `best_model.pt`
 4. Generate ROC curve visualization
 5. Print comprehensive metrics report
@@ -212,7 +216,7 @@ SpoiledOrNot/
 ├── app.py                    # Flask web application
 ├── baseline.py               # Training and evaluation pipeline
 ├── camera_detect.py          # Real-time CLI detection tool
-├── best_model.pt             # Pre-trained model checkpoint
+├── best_model.pt             # Pre-trained model checkpoint (epoch 10)
 │
 ├── templates/
 │   └── index.html            # Web interface template
@@ -237,7 +241,7 @@ SpoiledOrNot/
 ```python
 Base: ResNet-18 (pre-trained on ImageNet)
 Modifications:
-  - Final FC layer: 512 → num_classes
+  - Final FC layer: 512 → num_classes (14)
   - Backbone LR: 1e-4 (frozen early layers)
   - Head LR: 1e-3
 ```
@@ -255,7 +259,7 @@ Lightweight architecture for resource-constrained environments:
 Conv(3→32) → ReLU → MaxPool →
 Conv(32→64) → ReLU → MaxPool →
 Conv(64→128) → ReLU → AdaptivePool →
-FC(128→64) → ReLU → Dropout → FC(64→classes)
+FC(128→64) → ReLU → Dropout → FC(64→14)
 ```
 
 ### Produce Detection (Pre-processing)
@@ -268,26 +272,53 @@ FC(128→64) → ReLU → Dropout → FC(64→classes)
 
 ## 📊 Results
 
-### Performance Metrics (ResNet-18)
+### Training Progress (12 epochs)
+
+| Epoch | Train Loss | Val Accuracy | LR | Saved |
+|-------|------------|--------------|-----|-------|
+| 1 | 0.1652 | 96.63% | 0.000098 | ✓ |
+| 2 | 0.0443 | 98.81% | 0.000093 | ✓ |
+| 3 | 0.0241 | 98.86% | 0.000085 | ✓ |
+| 4 | 0.0232 | 99.14% | 0.000075 | ✓ |
+| 5 | 0.0131 | 99.22% | 0.000063 | ✓ |
+| 6 | 0.0044 | 99.33% | 0.000050 | ✓ |
+| 7 | 0.0026 | 99.29% | 0.000037 | |
+| 8 | 0.0019 | 99.33% | 0.000025 | |
+| 9 | 0.0005 | 99.36% | 0.000015 | ✓ |
+| 10 | 0.0004 | **99.45%** | 0.000007 | ✓ |
+| 11 | 0.0006 | 99.36% | 0.000002 | |
+| 12 | 0.0025 | 99.41% | 0.000000 | |
+
+**Best validation accuracy: 99.45%** (checkpoint epoch 10)
+
+### Test Set Performance (6,738 held-out images)
 
 | Metric | Value |
 |--------|-------|
-| Validation Accuracy | 94.2% |
-| Macro Precision | 0.942 |
-| Macro Recall | 0.938 |
-| Macro F1-Score | 0.940 |
-| ROC-AUC | 0.978 |
+| **Test Accuracy** | **99.75%** |
+| Macro Precision | 0.9961 |
+| Macro Recall | 0.9955 |
+| Macro F1-Score | 0.9957 |
+| ROC-AUC (macro) | 0.9999 |
 
-### Some Per-Class Performance
+### Per-Class Performance (Test Set)
 
-| Class | Precision | Recall | F1-Score |
-|-------|-----------|--------|----------|
-| Apple Fresh | 0.96 | 0.94 | 0.95 |
-| Apple Rotten | 0.93 | 0.96 | 0.94 |
-| Banana Fresh | 0.95 | 0.93 | 0.94 |
-| Banana Rotten | 0.92 | 0.94 | 0.93 |
-| Orange Fresh | 0.94 | 0.95 | 0.95 |
-| Orange Rotten | 0.95 | 0.93 | 0.94 |
+| Class | Precision | Recall | F1 | Support |
+|-------|-----------|--------|-----|---------|
+| freshapples | 1.0000 | 1.0000 | 1.0000 | 791 |
+| freshbanana | 1.0000 | 1.0000 | 1.0000 | 892 |
+| freshcucumber | 0.9964 | 0.9928 | 0.9946 | 279 |
+| freshokra | 0.9866 | 0.9973 | 0.9919 | 370 |
+| freshoranges | 1.0000 | 1.0000 | 1.0000 | 388 |
+| freshpotato | 0.9925 | 0.9852 | 0.9888 | 270 |
+| freshtomato | 1.0000 | 1.0000 | 1.0000 | 255 |
+| rottenapples | 1.0000 | 1.0000 | 1.0000 | 988 |
+| rottenbanana | 1.0000 | 1.0000 | 1.0000 | 900 |
+| rottencucumber | 0.9960 | 0.9843 | 0.9901 | 255 |
+| rottenokra | 0.9865 | 0.9821 | 0.9843 | 224 |
+| rottenoranges | 1.0000 | 1.0000 | 1.0000 | 403 |
+| rottenpotato | 0.9866 | 0.9946 | 0.9906 | 370 |
+| rottentomato | 1.0000 | 1.0000 | 1.0000 | 353 |
 
 ### Inference Speed
 
@@ -301,20 +332,15 @@ FC(128→64) → ReLU → Dropout → FC(64→classes)
 **Source:** [Fresh and Stale Classification](https://www.kaggle.com/datasets/swoyam2609/fresh-and-stale-classification) (Kaggle)
 
 **Contents:**
-- ~5,000 labeled images
-- Categories: Apples, Bananas, Oranges, etc.
-- Labels: Fresh, Rotten
+- Training set: 14 classes, filtered from original 18
+- Test set: **6,738 labeled images** (held-out split)
+- Categories: Fresh & rotten apples, bananas, cucumbers, okra, oranges, potatoes, tomatoes
 - Variations in lighting, angle, and background
 
 **Preprocessing:**
 - Resize to 224×224
 - Normalization: mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
 - Augmentation: Horizontal flip, vertical flip, rotation (180°), color jitter
-
-**Data Split:**
-- Training: 80%
-- Validation: 20%
-- Optional test set when available
 
 ## 🔮 Future Work
 
@@ -326,6 +352,12 @@ FC(128→64) → ReLU → Dropout → FC(64→classes)
 6. **Edge Optimization:** Quantization for Raspberry Pi deployment
 7. **Smaller AI Model:** Support lighter Gemma variants (e.g. gemma:4b) for lower-end hardware
 
+## 📈 Key Achievements
+
+- **99.75% test accuracy** on 6,738 held-out images across 14 produce classes
+- **0.9999 ROC-AUC** demonstrating near-perfect class separation
+- **Perfect F1 scores (1.000)** on 8 out of 14 classes (all fresh/rotten bananas, oranges, tomatoes, plus rotten apples)
+- Training converged in just **10 epochs** to 99.45% validation accuracy
 
 ### References
 
